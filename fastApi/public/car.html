@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no"/>
+<title>🚗 Car Node (Two-Way)</title>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet"/>
+<style>
+:root{--bg:#060810;--surface:#0d0f1a;--border:#1a1d2e;--accent:#c084fc;--accent2:#f472b6;--green:#4ade80;--red:#f87171;--dim:#3d3958}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:100%;height:100%;background:var(--bg);color:#e2d9f3;font-family:'Share Tech Mono',monospace;display:flex;align-items:center;justify-content:center}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:24px;padding:40px 32px;text-align:center;max-width:340px;width:92%;box-shadow:0 0 60px rgba(192,132,252,.07)}
+.logo{font-family:'Orbitron',sans-serif;font-weight:900;font-size:20px;letter-spacing:.2em;margin-bottom:4px;background:linear-gradient(90deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.sub{font-size:10px;color:var(--dim);letter-spacing:.15em;margin-bottom:30px}
+.orb{width:108px;height:108px;border-radius:50%;margin:0 auto 24px;display:flex;align-items:center;justify-content:center;font-size:40px;border:2px solid var(--border);background:var(--surface);transition:box-shadow .4s,border-color .4s}
+.orb.waiting{animation:breathe 2.5s ease-in-out infinite}
+.orb.live{border-color:var(--green);box-shadow:0 0 30px rgba(74,222,128,.4)}
+.orb.err{border-color:var(--red);box-shadow:0 0 24px rgba(248,113,113,.35)}
+@keyframes breathe{0%,100%{box-shadow:none}50%{box-shadow:0 0 20px rgba(192,132,252,.2)}}
+.status{font-family:'Orbitron',sans-serif;font-weight:700;font-size:13px;letter-spacing:.15em;margin-bottom:8px;color:var(--accent)}
+.status.live{color:var(--green)}.status.err{color:var(--red)}
+.detail{font-size:10px;color:var(--dim);letter-spacing:.08em;min-height:16px;margin-bottom:24px}
+.row{display:flex;justify-content:space-between;align-items:center;font-size:10px;margin-bottom:8px}
+.k{color:var(--dim);letter-spacing:.1em}.v{color:var(--accent)}
+select.v { background: #1a1d2e; border: 1px solid var(--border); border-radius: 4px; padding: 2px 4px; font-family: inherit; font-size: 10px; outline: none; max-width: 150px; color: var(--accent); }
+hr{border:none;border-top:1px solid var(--border);margin:20px 0}
+.btn{background:transparent;border:1px solid var(--border);color:var(--dim);border-radius:10px;padding:8px 18px;font-family:'Share Tech Mono',monospace;font-size:10px;letter-spacing:.1em;cursor:pointer;transition:border-color .2s,color .2s;margin-top:4px}
+.btn:hover{border-color:var(--accent2);color:var(--accent2)}
+#preview{position:fixed;bottom:14px;right:14px;width:90px;height:68px;border-radius:10px;object-fit:cover;border:1px solid var(--border);opacity:.75;display:none;z-index:100}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="logo">CAR NODE</div>
+  <div class="sub">TWO-WAY TRANSMITTER</div>
+  <div class="orb waiting" id="orb">📡</div>
+  <div class="status" id="st">STARTING…</div>
+  <div class="detail" id="det">Accessing camera & mic</div>
+  <hr/>
+  <div class="row">
+    <span class="k">SOURCE</span>
+    <select id="camSelect" class="v"><option>SCANNING...</option></select>
+  </div>
+  <div class="row"><span class="k">CAMERA</span><span class="v" id="iCam">—</span></div>
+  <div class="row"><span class="k">MIC (IN/OUT)</span><span class="v" id="iMic">—</span></div>
+  <div class="row"><span class="k">ICE</span><span class="v" id="iIce">—</span></div>
+  <button class="btn" id="btnReset">↺ RESET</button>
+</div>
+
+<video id="preview" autoplay playsinline muted></video>
+<audio id="remoteAudio" autoplay playsinline></audio>
+
+<script>
+const PC_CONFIG = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
+let pc, stream, pollTimer;
+let knownCtrlIce = 0;
+let currentDeviceId = null;
+
+const orb = document.getElementById('orb');
+const st = document.getElementById('st');
+const det = document.getElementById('det');
+const iCam = document.getElementById('iCam');
+const iMic = document.getElementById('iMic');
+const iIce = document.getElementById('iIce');
+const prev = document.getElementById('preview');
+const remoteAudio = document.getElementById('remoteAudio');
+const camSelect = document.getElementById('camSelect');
+
+function setUI(state, emoji, label, sub) {
+  orb.className = 'orb ' + state;
+  orb.textContent = emoji;
+  st.className = 'status ' + state;
+  st.textContent = label;
+  det.textContent = sub;
+}
+
+async function updateCameraList() {
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const videoDevices = devices.filter(d => d.kind === 'videoinput');
+    camSelect.innerHTML = '';
+    videoDevices.forEach((device, index) => {
+      const opt = document.createElement('option');
+      opt.value = device.deviceId;
+      opt.text = device.label || `Camera ${index + 1}`;
+      camSelect.appendChild(opt);
+    });
+    if (currentDeviceId) camSelect.value = currentDeviceId;
+  } catch (e) { console.error(e); }
+}
+
+async function getMedia() {
+  if (stream) stream.getTracks().forEach(track => track.stop());
+  const constraints = { 
+    video: currentDeviceId ? { deviceId: { exact: currentDeviceId } } : { facingMode: 'environment' }, 
+    audio: { echoCancellation: true, noiseSuppression: true } 
+  };
+  try {
+    stream = await navigator.mediaDevices.getUserMedia(constraints);
+    await updateCameraList(); 
+    iCam.textContent = 'ACTIVE ✓';
+    iMic.textContent = 'BIDIRECTIONAL ✓';
+    prev.srcObject = stream;
+    prev.style.display = 'block';
+    return true;
+  } catch (err) {
+    setUI('err','❌','NO MEDIA','Check permissions');
+    return false;
+  }
+}
+
+async function start() {
+  clearInterval(pollTimer);
+  setUI('waiting','📡','INITIALIZING…','');
+  if (!await getMedia()) return;
+
+  await fetch('/sig/reset', { method:'POST' }).catch(()=>{});
+  knownCtrlIce = 0;
+
+  if (pc) { try { pc.close(); } catch(_){} }
+  pc = new RTCPeerConnection(PC_CONFIG);
+
+  // Send local camera and mic to controller
+  stream.getTracks().forEach(t => pc.addTrack(t, stream));
+
+  // Receive controller's mic and play it
+  pc.ontrack = (event) => {
+    if (event.streams && event.streams[0]) {
+      remoteAudio.srcObject = event.streams[0];
+      console.log("Receiving remote audio track");
+    }
+  };
+
+  pc.onicecandidate = async e => {
+    if (!e.candidate) return;
+    await fetch('/sig/ice/car', {
+      method: 'POST',
+      headers: { 'Content-Type':'application/json' },
+      body: JSON.stringify(e.candidate)
+    }).catch(()=>{});
+  };
+
+  pc.oniceconnectionstatechange = () => {
+    iIce.textContent = pc.iceConnectionState.toUpperCase();
+    if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
+      setUI('live','🔴','LIVE','Full Duplex Audio/Video Active');
+    }
+  };
+
+  const offer = await pc.createOffer();
+  await pc.setLocalDescription(offer);
+  await fetch('/sig/offer', {
+    method: 'POST',
+    headers: { 'Content-Type':'application/json' },
+    body: JSON.stringify(pc.localDescription)
+  });
+
+  setUI('waiting','📡','WAITING…','Ready for controller link');
+
+  pollTimer = setInterval(async () => {
+    if (pc.signalingState !== 'stable') {
+      const r = await fetch('/sig/answer').catch(()=>null);
+      if (r && r.ok) {
+        const d = await r.json();
+        if (d.answer) {
+          await pc.setRemoteDescription(new RTCSessionDescription(d.answer));
+        }
+      }
+    }
+    const r2 = await fetch('/sig/ice/ctrl').catch(()=>null);
+    if (r2 && r2.ok) {
+      const d2 = await r2.json();
+      const all = d2.ice || [];
+      for (let i = knownCtrlIce; i < all.length; i++) {
+        try { await pc.addIceCandidate(new RTCIceCandidate(all[i])); } catch(_) {}
+      }
+      knownCtrlIce = all.length;
+    }
+  }, 1500);
+}
+
+camSelect.addEventListener('change', (e) => {
+  currentDeviceId = e.target.value;
+  start();
+});
+
+document.getElementById('btnReset').addEventListener('click', start);
+window.addEventListener('load', start);
+</script>
+</body>
+</html>

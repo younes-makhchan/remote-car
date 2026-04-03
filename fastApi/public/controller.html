@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Apex T-Control v2</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Orbitron:wght@400;900&display=swap" rel="stylesheet">
+  <style>
+    :root { --neon-purple: #c084fc; --neon-sky: #38bdf8; }
+    body { background: #050508; font-family: 'JetBrains Mono', monospace; color: #e2e8f0; user-select: none; touch-action: none; }
+    .neo-panel { background: rgba(15, 15, 25, 0.85); backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.08); }
+    .btn-action { background: linear-gradient(145deg, #1e1e2e, #13131d); transition: all 0.1s ease; border: 1px solid rgba(255,255,255,0.05); }
+    .btn-action:active { transform: scale(0.95); filter: brightness(1.4); }
+    input[type=range] { -webkit-appearance: none; width: 100%; background: transparent; }
+    input[type=range]::-webkit-slider-runnable-track { height: 6px; background: #000; border-radius: 10px; }
+    input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 20px; width: 20px; border-radius: 50%; background: var(--neon-purple); margin-top: -7px; box-shadow: 0 0 10px var(--neon-purple); border: 2px solid white; }
+  </style>
+</head>
+<body class="flex items-center justify-center min-h-screen p-4">
+
+  <div class="neo-panel p-8 rounded-[3rem] w-full max-w-4xl relative">
+    <div class="absolute top-4 right-8 text-[10px] text-slate-600 font-bold uppercase tracking-widest">
+        Latency: <span id="ms-val" class="text-sky-400">0</span>ms
+    </div>
+    
+    <div class="grid grid-cols-2 gap-12 mb-10 pb-6 border-b border-white/5">
+      <div class="flex flex-col gap-2">
+        <div class="flex justify-between items-center px-1">
+          <span class="text-[10px] font-bold text-slate-500 uppercase">Speed Limit</span>
+          <span id="speed-val" class="text-xl font-black text-purple-400" style="font-family: Orbitron">200</span>
+        </div>
+        <input type="range" id="speed-slider" min="0" max="255" value="200">
+      </div>
+
+      <div class="flex flex-col gap-2">
+        <span class="text-[10px] font-bold text-slate-500 uppercase px-1">Rotation Step</span>
+        <div class="flex gap-2 bg-black/40 p-1 rounded-xl">
+          <button onclick="setStep(15)" class="step-btn flex-1 py-2 rounded-lg text-[10px] font-bold text-slate-500">15°</button>
+          <button onclick="setStep(45)" class="step-btn flex-1 py-2 rounded-lg text-[10px] font-bold text-slate-500">45°</button>
+          <button onclick="setStep(60)" class="step-btn flex-1 py-2 rounded-lg text-[10px] font-bold bg-sky-500/20 text-sky-400 border border-sky-500/30">60°</button>
+          <button onclick="setStep(90)" class="step-btn flex-1 py-2 rounded-lg text-[10px] font-bold text-slate-500">90°</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-12 gap-6">
+      
+      <div class="col-span-3 flex flex-col gap-4">
+        <button data-dir="F" class="btn-action h-36 rounded-[2rem] flex flex-col items-center justify-center">
+          <span class="text-[10px] font-bold tracking-widest uppercase opacity-60">Push</span>
+        </button>
+        <button data-dir="B" class="btn-action h-36 rounded-[2rem] flex flex-col items-center justify-center">
+          <span class="text-[10px] font-bold tracking-widest uppercase opacity-60">Back</span>
+        </button>
+      </div>
+
+      <div class="col-span-6 flex flex-col items-center justify-between py-2">
+        <div class="relative w-44 h-44 rounded-full border-2 border-white/5 bg-black/40 flex items-center justify-center shadow-inner">
+          <div id="needle" class="absolute w-1 h-32 bg-sky-400 rounded-full transition-transform duration-500 ease-out"></div>
+          <div class="z-10 text-center">
+            <div id="angle-display" class="text-3xl font-black text-sky-400" style="font-family: Orbitron">0°</div>
+            <div class="text-[8px] text-slate-500 font-bold uppercase mt-1">Heading</div>
+          </div>
+        </div>
+        <button data-dir="S" class="btn-action w-full py-6 rounded-2xl border border-red-500/40 text-red-500 font-black text-xs tracking-[0.4em] mt-6">
+          STOP ENGINE
+        </button>
+      </div>
+
+      <div class="col-span-3 flex flex-col gap-4">
+        <div class="flex gap-4 h-full">
+          <button id="turn-L" class="btn-action flex-1 h-full rounded-[2rem] flex flex-col items-center justify-center group">
+            <span class="text-sky-400 font-black">L</span>
+          </button>
+          <button id="turn-R" class="btn-action flex-1 h-full rounded-[2rem] flex flex-col items-center justify-center group">
+            <span class="text-pink-500 font-black">R</span>
+          </button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+    let currentAngle = 0, stepSize = 60;
+    let holdTimer = null;
+    let isDriving = false;
+
+    const msEl = document.getElementById('ms-val');
+    const angleDisplay = document.getElementById('angle-display');
+    const needle = document.getElementById('needle');
+
+    // 1. TIMED ROTATION (Calls Python logic)
+    async function triggerRotation(dir) {
+        const start = performance.now();
+        try {
+            const res = await fetch(`/rotate?dir=${dir}&deg=${stepSize}`);
+            if (res.ok) msEl.textContent = Math.round(performance.now() - start);
+            updateHeading(dir === 'L' ? -stepSize : stepSize);
+        } catch (e) { console.error("Rotation Link Lost"); }
+    }
+
+    // 2. STANDARD MOVE (Hold-to-move)
+    async function sendCmd(dir) {
+        const start = performance.now();
+        try {
+            const res = await fetch(`/move?dir=${dir}`);
+            if (res.ok) msEl.textContent = Math.round(performance.now() - start);
+        } catch (e) { console.error("Move Link Lost"); }
+    }
+
+    // Assign Rotation to L/R Buttons
+    document.getElementById('turn-L').onclick = () => triggerRotation('L');
+    document.getElementById('turn-R').onclick = () => triggerRotation('R');
+
+    // Assign Hold Logic to F/B Buttons
+    document.querySelectorAll('[data-dir]').forEach(btn => {
+        const dir = btn.dataset.dir;
+        btn.onpointerdown = (e) => {
+            e.preventDefault();
+            if (dir === 'S') sendCmd('S');
+            else {
+                isDriving = true;
+                sendCmd(dir);
+                holdTimer = setInterval(() => { if(isDriving) sendCmd(dir); }, 200);
+            }
+        };
+        btn.onpointerup = btn.onpointerleave = () => {
+            if (dir !== 'S') {
+                isDriving = false;
+                clearInterval(holdTimer);
+                sendCmd('S');
+            }
+        };
+    });
+
+    // Step Selector
+    function setStep(val) {
+        stepSize = val;
+        document.querySelectorAll('.step-btn').forEach(btn => {
+            btn.className = "step-btn flex-1 py-2 rounded-lg text-[10px] font-bold text-slate-500";
+            if(parseInt(btn.innerText) === val) {
+                btn.className = "step-btn flex-1 py-2 rounded-lg text-[10px] font-bold bg-sky-500/20 text-sky-400 border border-sky-500/30";
+            }
+        });
+    }
+
+    function updateHeading(delta) {
+        currentAngle = (currentAngle + delta + 360) % 360;
+        angleDisplay.textContent = `${currentAngle}°`;
+        needle.style.transform = `rotate(${currentAngle}deg)`;
+    }
+
+    // Speed Slider
+    document.getElementById('speed-slider').oninput = (e) => {
+        document.getElementById('speed-val').textContent = e.target.value;
+    };
+    document.getElementById('speed-slider').onchange = (e) => {
+        fetch(`/speed?val=${e.target.value}`);
+    };
+  </script>
+</body>
+</html>
