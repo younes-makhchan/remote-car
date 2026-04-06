@@ -1,179 +1,133 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no"/>
-<title>🎮 Controller</title>
-<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;700&family=Share+Tech+Mono&display=swap" rel="stylesheet"/>
-<style>
-:root {
-  --bg:#0a0a0f; --border:#23232f;
-  --accent:#c084fc; --accent2:#f472b6;
-  --red:#f87171; --btn-bg:#18181f;
-  --text:#e2d9f3; --dim:#4a4560;
-}
-* { box-sizing: border-box; margin: 0; padding: 0; -webkit-user-select: none; user-select: none; }
-body { 
-  width: 100%; height: 100vh; background: var(--bg); overflow: hidden;
-  touch-action: none; -webkit-tap-highlight-color: transparent; 
-  font-family: 'Rajdhani', sans-serif; color: var(--text);
-}
-
-#layout {
-  height: 100%; display: flex; flex-direction: column;
-  justify-content: space-between; padding: 30px 20px;
-}
-
-.header { display: flex; justify-content: space-between; align-items: center; }
-.logo { font-weight: 700; font-size: 20px; letter-spacing: .2em; color: var(--accent); }
-.ping { font-family: 'Share Tech Mono', monospace; font-size: 12px; color: var(--dim); }
-
-#controls { display: flex; justify-content: space-between; align-items: center; }
-
-.btn {
-  width: 80px; height: 80px; border-radius: 50%;
-  background: var(--btn-bg); border: 2px solid var(--border);
-  display: flex; align-items: center; justify-content: center;
-  flex-direction: column; cursor: pointer; transition: all 0.1s;
-}
-.btn.active { transform: scale(0.9); border-color: var(--accent); box-shadow: 0 0 15px var(--accent); }
-.btn-stop { border-color: var(--red); color: var(--red); }
-
-.label { font-size: 10px; font-family: 'Share Tech Mono'; color: var(--dim); margin-top: 4px; pointer-events: none; }
-
-#center { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 15px; }
-input[type=range] { width: 120px; accent-color: var(--accent); }
-
-.pad-v { display: flex; flex-direction: column; gap: 20px; }
-.pad-h { display: flex; gap: 15px; }
-
-#toast {
-  position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
-  background: rgba(0,0,0,0.8); padding: 8px 20px; border-radius: 20px;
-  font-size: 12px; opacity: 0; transition: 0.3s; pointer-events: none;
-}
-#toast.show { opacity: 1; }
-</style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Remote Rover Control</title>
+  <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: radial-gradient(circle at top, #10152a 0%, #06070f 65%);
+      --panel: rgba(15,18,30,0.85);
+      --accent: #38bdf8;
+      --accent-secondary: #c084fc;
+      --text: #e5ecff;
+      --muted: #7b87a0;
+      --border: rgba(88,106,139,0.28);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Rajdhani', sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 40px 20px;
+    }
+    .card {
+      width: min(480px, 100%);
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 28px;
+      padding: 36px 32px;
+      text-align: center;
+      box-shadow: 0 40px 120px rgba(10,16,45,0.35);
+      backdrop-filter: blur(14px);
+    }
+    .logo {
+      font-size: 24px;
+      letter-spacing: 0.35em;
+      font-weight: 700;
+      text-transform: uppercase;
+      background: linear-gradient(90deg, var(--accent), var(--accent-secondary));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 12px;
+    }
+    .tagline {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 13px;
+      color: var(--muted);
+      letter-spacing: 0.2em;
+      margin-bottom: 32px;
+      text-transform: uppercase;
+    }
+    .description {
+      font-size: 15px;
+      line-height: 1.6;
+      color: rgba(229,236,255,0.85);
+      margin-bottom: 32px;
+    }
+    .actions {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+    .action {
+      flex: 1 1 160px;
+      padding: 18px 20px;
+      border-radius: 18px;
+      border: 1px solid rgba(56,189,248,0.35);
+      color: var(--text);
+      text-decoration: none;
+      font-weight: 700;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      position: relative;
+      overflow: hidden;
+      transition: transform 0.15s ease, border 0.15s ease, box-shadow 0.15s ease;
+      background: radial-gradient(circle at 30% 30%, rgba(56,189,248,0.35), rgba(14,24,38,0.85) 68%);
+    }
+    .action:hover {
+      transform: translateY(-3px);
+      border-color: rgba(192,132,252,0.6);
+      box-shadow: 0 18px 45px rgba(56,189,248,0.35);
+    }
+    .action span {
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      color: rgba(229,236,255,0.75);
+      letter-spacing: 0.1em;
+      margin-top: 6px;
+    }
+    .footnote {
+      margin-top: 30px;
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+    .footnote a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+    .footnote a:hover {
+      text-decoration: underline;
+    }
+  </style>
 </head>
 <body>
-
-<div id="layout">
-  <div class="header">
-    <div class="logo">ROBOT·CTRL</div>
-    <div class="ping">LATENCY: <span id="ms">--</span>ms</div>
+  <div class="card">
+    <div class="logo">REMOTE·CAR</div>
+    <div class="tagline">LOW LATENCY CONTROL STACK</div>
+    <p class="description">
+      Choose which role you are setting up. Phone A mounts on the rover and streams video/audio.
+      Phone B stays with the driver to send commands and optionally talk back through the rover.
+    </p>
+    <div class="actions">
+      <a class="action" href="/controller">
+        Drive <span>Controller phone (Phone B)</span>
+      </a>
+      <a class="action" href="/car">
+        Car Node <span>Mounted phone (Phone A)</span>
+      </a>
+    </div>
+    <p class="footnote">
+      Need wiring, calibration, or networking help? Read the <a href="/README.md" target="_blank" rel="noopener">setup guide</a>.
+    </p>
   </div>
-
-  <div id="controls">
-    <div class="pad-v">
-      <div class="btn" id="btnF" data-dir="F">▲<div class="label">FWD</div></div>
-      <div class="btn" id="btnB" data-dir="B">▼<div class="label">REV</div></div>
-    </div>
-
-    <div id="center">
-      <div class="label">SPEED</div>
-      <input type="range" id="speed" min="80" max="255" value="200">
-      <div id="speed-val" style="font-family: 'Share Tech Mono'">200</div>
-      <div class="btn btn-stop" id="btnS" data-dir="S">⏹<div class="label">STOP</div></div>
-    </div>
-
-    <div class="pad-h">
-      <div class="btn" id="btnR" data-dir="R">◀<div class="label">LEFT</div></div>
-      <div class="btn" id="btnL" data-dir="L">▶<div class="label">RIGHT</div></div>
-    </div>
-  </div>
-</div>
-
-<div id="toast"></div>
-
-<script>
-let holdTimer;
-let isDriving = false;
-const msEl = document.getElementById('ms');
-const toast = document.getElementById('toast');
-const speedSlider = document.getElementById('speed');
-const speedVal = document.getElementById('speed-val');
-
-function showToast(msg) {
-  toast.textContent = msg; toast.className = 'show';
-  setTimeout(() => toast.className = '', 2000);
-}
-
-async function sendCmd(dir) {
-  const start = performance.now();
-  try {
-    const res = await fetch(`/move?dir=${dir}`, { signal: AbortSignal.timeout(1500) });
-    if (res.ok) msEl.textContent = Math.round(performance.now() - start);
-  } catch (e) { console.error("Link Error"); }
-}
-
-function startDrive(dir) {
-  if (isDriving) stopDrive();
-  isDriving = true;
-  sendCmd(dir);
-  holdTimer = setInterval(() => {
-    if (isDriving) sendCmd(dir);
-  }, 200);
-}
-
-function stopDrive() {
-  isDriving = false;
-  clearInterval(holdTimer);
-  holdTimer = null;
-  sendCmd('S');
-  document.querySelectorAll('.btn').forEach(b => b.classList.remove('active'));
-}
-
-document.querySelectorAll('.btn').forEach(btn => {
-  const dir = btn.dataset.dir;
-  const isStopBtn = dir === 'S';
-
-  const handleStart = (e) => {
-    e.preventDefault();
-    btn.classList.add('active');
-    if (isStopBtn) stopDrive();
-    else startDrive(dir);
-  };
-
-  const handleEnd = (e) => {
-    e.preventDefault();
-    btn.classList.remove('active');
-    if (!isStopBtn) stopDrive();
-  };
-
-  btn.addEventListener('pointerdown', handleStart);
-  btn.addEventListener('pointerup', handleEnd);
-  btn.addEventListener('pointerleave', handleEnd);
-  btn.addEventListener('pointercancel', handleEnd);
-});
-
-const keys = { 
-  arrowup:'F', w:'F', 
-  arrowdown:'B', s:'B', 
-  arrowleft:'L', a:'L', 
-  arrowright:'R', d:'R', 
-  ' ':'S' 
-};
-
-document.addEventListener('keydown', e => {
-  if (e.repeat) return;
-  const dir = keys[e.key.toLowerCase()] || keys[e.code.toLowerCase()];
-  if (dir) {
-    const el = document.querySelector(`[data-dir="${dir}"]`);
-    if (el) el.classList.add('active');
-    dir === 'S' ? stopDrive() : startDrive(dir);
-  }
-});
-
-document.addEventListener('keyup', e => {
-  const dir = keys[e.key.toLowerCase()] || keys[e.code.toLowerCase()];
-  if (dir && dir !== 'S') stopDrive();
-});
-
-speedSlider.addEventListener('input', () => { speedVal.textContent = speedSlider.value; });
-speedSlider.addEventListener('change', () => { fetch(`/speed?val=${speedSlider.value}`); });
-
-window.oncontextmenu = function(event) { event.preventDefault(); event.stopPropagation(); return false; };
-window.onload = () => showToast("CONTROLS SWAPPED");
-</script>
 </body>
 </html>

@@ -1,0 +1,54 @@
+Remote Car Control Stack — Knowledge Pack
+=========================================
+
+Purpose
+-------
+Two-phone teleoperation system for an ESP32-based rover. Phone A (Car Node) stays on the rover and streams camera/microphone feeds via WebRTC. Phone B (Controller) issues drive commands and can speak back. A FastAPI backend mediates low-latency control, status heartbeats, and WebRTC signaling; an ESP32 firmware executes motor commands received over a persistent WebSocket.
+
+Topology
+--------
+Client → FastAPI → ESP32 (drive channel)  
+Controller ↔ FastAPI ↔ Car (WebRTC signaling)  
+FastAPI listens on port `PORT` (default 5000). Static assets live under `fastApi/public`.
+
+Key Routes
+----------
+`GET /` — role selection landing page.  
+`GET /controller` — controller UI (`fastApi/public/controller.html`).  
+`GET /car` — car node UI (`fastApi/public/car.html`).  
+`GET /config` — JSON `{ "stun_servers": [...] }` derived from `STUN_SERVERS` env var.  
+`WS /ctrl` — controller command channel. Messages (JSON):
+- Outbound: `hello`, `heartbeat`, `drive`, `stop`, `speed`.
+- Inbound: `ack`, `status`, `error`. Status includes ESP, controller, car, and media info.
+
+`WS /esp` — persistent ESP32 socket. Server pushes single-character drive/speed commands.  
+`POST /move|/rotate|/speed` — legacy REST fallbacks for drive/rotation/speed.  
+`WS /ws?role=car|ctrl` — WebRTC signaling bridge used by both browsers.  
+`POST/GET /sig/*` — REST shims for legacy polling of offers/answers/ICE.  
+`GET /health` — combined ESP32, controller, car, and media status snapshot.
+
+Configuration
+-------------
+`STUN_SERVERS` (comma-separated) overrides default `stun:stun.l.google.com:19302`. Both front-ends fetch `/config` and build ICE server lists dynamically; add TURN URLs (with credentials) here for challenging networks. Other relevant env vars: `PORT`.
+
+Front-End Highlights
+--------------------
+`fastApi/public/controller.html`
+- WebSocket `/ctrl` for low-latency drive commands; automatically restarts loops after reconnects.
+- WebRTC player overlay styled in futuristic blue theme; microphone toggle for talk-back; local mute control for car audio.
+- Status banners surface controller↔server, car peer, ESP connection, and media availability.
+
+`fastApi/public/car.html`
+- Dedicated toggles for camera and microphone; emits `media_status` updates to server.
+- Automatically reconnects signaling channel and refreshes media without full reload.
+
+Firmware (ESP32)
+----------------
+`src/main.cpp` maintains Wi-Fi connection, opens a WebSocket client to `/esp`, applies incoming single-character commands: `F/B/L/R` for motion, `S` stop, `0-9` for speed PWM, sends heartbeat `"ping"` every 5s. Motors stop immediately on socket disconnect.
+
+Operational Notes
+-----------------
+- FastAPI enforces single active controller and car sessions; new connections replace previous sockets gracefully.
+- Drive commands are acknowledged via `/ctrl` to provide latency telemetry; rotating temporarily locks drive loop and restores speed afterwards.
+- WebRTC relies on STUN for address discovery; TURN deployment recommended for restrictive NATs but not bundled.
+- Landing page explains roles and links to README setup guidance.

@@ -3,162 +3,1045 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Apex T-Control v2</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <title>Apex T-Control v3</title>
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Orbitron:wght@400;900&display=swap" rel="stylesheet">
   <style>
-    :root { --neon-purple: #c084fc; --neon-sky: #38bdf8; }
-    body { background: #050508; font-family: 'JetBrains Mono', monospace; color: #e2e8f0; user-select: none; touch-action: none; }
-    .neo-panel { background: rgba(15, 15, 25, 0.85); backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.08); }
-    .btn-action { background: linear-gradient(145deg, #1e1e2e, #13131d); transition: all 0.1s ease; border: 1px solid rgba(255,255,255,0.05); }
-    .btn-action:active { transform: scale(0.95); filter: brightness(1.4); }
-    input[type=range] { -webkit-appearance: none; width: 100%; background: transparent; }
-    input[type=range]::-webkit-slider-runnable-track { height: 6px; background: #000; border-radius: 10px; }
-    input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 20px; width: 20px; border-radius: 50%; background: var(--neon-purple); margin-top: -7px; box-shadow: 0 0 10px var(--neon-purple); border: 2px solid white; }
+    :root {
+      --accent: #38bdf8;
+      --accent-glow: rgba(56, 189, 248, 0.35);
+      --danger: #f87171;
+      --panel-bg: rgba(10, 16, 28, 0.55);
+      --panel-border: rgba(56, 189, 248, 0.18);
+      --text-muted: rgba(203, 213, 225, 0.65);
+      --thumb: rgba(56, 189, 248, 0.85);
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'JetBrains Mono', monospace;
+      background: #04070d;
+      color: #e2e8f0;
+      min-height: 100vh;
+      height: 100vh;
+      overflow: hidden;
+      user-select: none;
+      touch-action: none;
+    }
+
+    .fs-overlay {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(4, 7, 13, 0.94);
+      backdrop-filter: blur(14px);
+      z-index: 50;
+      transition: opacity 0.25s ease;
+      opacity: 1;
+    }
+    .fs-overlay.hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
+    .fs-card {
+      background: rgba(10, 16, 28, 0.92);
+      border: 1px solid rgba(56, 189, 248, 0.25);
+      border-radius: 24px;
+      padding: 36px 42px;
+      max-width: 360px;
+      width: 90%;
+      text-align: center;
+      box-shadow: 0 24px 70px rgba(8, 11, 19, 0.62);
+    }
+    .fs-card h2 {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 18px;
+      letter-spacing: 0.3em;
+      color: #38bdf8;
+      text-transform: uppercase;
+      margin-bottom: 12px;
+    }
+    .fs-card p {
+      font-size: 11px;
+      letter-spacing: 0.16em;
+      color: rgba(148, 163, 184, 0.8);
+      text-transform: uppercase;
+      margin-bottom: 26px;
+    }
+    .fs-card button {
+      padding: 12px 28px;
+      border-radius: 16px;
+      border: 1px solid rgba(56, 189, 248, 0.45);
+      background: rgba(56, 189, 248, 0.1);
+      color: #e2e8f0;
+      font-size: 11px;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+    }
+    .fs-card button:hover {
+      background: rgba(244, 114, 182, 0.12);
+      border-color: #f472b6;
+      color: #f472b6;
+    }
+
+    /* ─── Video background ─── */
+    #remote-video {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      filter: saturate(1.05);
+      z-index: 0;
+    }
+    #remote-audio { display: none; }
+
+    /* ─── HUD root ─── */
+    .hud {
+      position: relative;
+      z-index: 10;
+      width: 100%;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+      pointer-events: none;
+    }
+
+    /* ─── Top bar ─── */
+    .hud-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      pointer-events: none;
+    }
+
+    .status-pill {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: rgba(8, 13, 22, 0.6);
+      border: 1px solid rgba(56, 189, 248, 0.2);
+      border-radius: 999px;
+      padding: 6px 14px;
+      backdrop-filter: blur(14px);
+      pointer-events: auto;
+    }
+    .status-dot {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: #475569;
+      transition: background 0.3s;
+      flex-shrink: 0;
+    }
+    .status-dot.online { background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+    .status-pill-text {
+      font-size: 10px;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+    }
+    .status-pill-text strong {
+      color: var(--accent);
+      font-weight: 700;
+    }
+
+    .media-row {
+      display: flex;
+      gap: 8px;
+      pointer-events: auto;
+    }
+    .media-btn {
+      width: 38px; height: 38px;
+      border-radius: 50%;
+      background: rgba(8, 13, 22, 0.65);
+      border: 1px solid rgba(56, 189, 248, 0.28);
+      color: var(--accent);
+      font-size: 16px;
+      display: flex; align-items: center; justify-content: center;
+      backdrop-filter: blur(12px);
+      transition: transform 0.12s, background 0.2s, opacity 0.2s;
+      cursor: pointer;
+    }
+    .media-btn.off {
+      background: rgba(15, 23, 42, 0.4);
+      color: rgba(148, 163, 184, 0.8);
+      border-color: rgba(148, 163, 184, 0.28);
+      opacity: 0.7;
+    }
+    .media-btn:active { transform: scale(0.92); }
+
+    /* ─── Bottom controls ─── */
+    .hud-bottom {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      gap: 16px;
+      pointer-events: none;
+    }
+
+    /* ─── Shared panel ─── */
+    .ctrl-panel {
+      background: none;
+      border: none;
+      border-radius: 0;
+      backdrop-filter: none;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      pointer-events: auto;
+      width: calc(clamp(64px, 11vw, 80px) * 2 + 10px);
+    }
+
+    /* ─── Drive buttons (Push / Back) ─── */
+    .drive-btn {
+      width: clamp(64px, 11vw, 80px);
+      height: clamp(64px, 11vw, 80px);
+      border-radius: 20px;
+      background: rgba(8, 16, 30, 0.65);
+      border: 1px solid rgba(56, 189, 248, 0.35);
+      color: var(--accent);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: clamp(22px, 4vw, 30px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: transform 0.12s, box-shadow 0.15s, background 0.15s;
+      box-shadow: 0 8px 24px rgba(4, 8, 16, 0.35);
+      cursor: pointer;
+      text-shadow: 0 0 12px rgba(56, 189, 248, 0.9), 0 0 24px rgba(56, 189, 248, 0.5);
+    }
+    .drive-btn.active {
+      box-shadow: 0 0 18px rgba(56, 189, 248, 0.45);
+      background: rgba(56, 189, 248, 0.12);
+    }
+    .drive-btn.disabled { opacity: 0.3; pointer-events: none; }
+    .drive-btn:active {
+      transform: scale(0.94);
+      box-shadow: 0 0 18px rgba(56, 189, 248, 0.45);
+      background: rgba(56, 189, 248, 0.12);
+    }
+
+    /* ─── Speed group ─── */
+    .speed-group {
+      background: rgba(8, 13, 22, 0.5);
+      border: 1px solid rgba(56, 189, 248, 0.12);
+      border-radius: 16px;
+      padding: 12px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      backdrop-filter: blur(14px);
+      width: 100%;
+    }
+    .speed-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 9px;
+      letter-spacing: 0.26em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+    }
+    #speed-val {
+      font-family: 'Orbitron', sans-serif;
+      font-size: clamp(18px, 3vw, 22px);
+      color: #c084fc;
+      letter-spacing: 0.12em;
+    }
+    input[type=range] {
+      -webkit-appearance: none;
+      width: 100%;
+      background: transparent;
+    }
+    input[type=range]::-webkit-slider-runnable-track {
+      height: 5px;
+      background: rgba(15, 23, 42, 0.7);
+      border-radius: 999px;
+      border: 1px solid rgba(56, 189, 248, 0.2);
+    }
+    input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      height: 16px; width: 16px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 10px rgba(56, 189, 248, 0.7);
+      margin-top: -6px;
+      border: 2px solid rgba(15, 23, 42, 0.9);
+    }
+    input[type=range]::-moz-range-track {
+      height: 5px;
+      background: rgba(15, 23, 42, 0.7);
+      border-radius: 999px;
+    }
+    input[type=range]::-moz-range-thumb {
+      height: 16px; width: 16px;
+      border-radius: 50%;
+      background: var(--accent);
+      border: 2px solid rgba(15, 23, 42, 0.9);
+      box-shadow: 0 0 10px rgba(56, 189, 248, 0.7);
+    }
+
+    /* ─── Rotation panel ─── */
+    .rot-buttons {
+      display: flex;
+      gap: 10px;
+    }
+    .rot-btn {
+      flex: 1;
+      height: clamp(64px, 11vw, 80px);
+      border-radius: 20px;
+      background: rgba(8, 16, 30, 0.65);
+      border: 1px solid rgba(56, 189, 248, 0.35);
+      color: var(--accent);
+      font-size: clamp(22px, 4vw, 30px);
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer;
+      transition: transform 0.12s, box-shadow 0.15s, background 0.15s;
+      box-shadow: 0 8px 24px rgba(4, 8, 16, 0.35);
+      text-shadow: 0 0 12px rgba(56, 189, 248, 0.9), 0 0 24px rgba(56, 189, 248, 0.5);
+    }
+    .rot-btn:active {
+      transform: scale(0.94);
+      box-shadow: 0 0 18px rgba(56, 189, 248, 0.45);
+      background: rgba(56, 189, 248, 0.12);
+    }
+
+    /* ─── Step buttons ─── */
+    .step-grid {
+      display: grid;
+      grid-template-columns: repeat(4, clamp(34px, 6vw, 44px));
+      gap: 6px;
+      background: rgba(8, 13, 22, 0.5);
+      border: 1px solid rgba(56, 189, 248, 0.12);
+      border-radius: 16px;
+      padding: 8px;
+      backdrop-filter: blur(14px);
+      width: fit-content;
+    }
+    .step-lbl {
+      grid-column: span 2;
+      text-align: center;
+      font-size: 8px;
+      letter-spacing: 0.3em;
+      text-transform: uppercase;
+      color: rgba(203, 213, 225, 0.45);
+      margin-bottom: 2px;
+    }
+    .step-btn {
+      padding: 9px 8px;
+      border-radius: 12px;
+      font-size: 11px;
+      letter-spacing: 0.14em;
+      font-family: 'JetBrains Mono', monospace;
+      background: rgba(15, 23, 42, 0.55);
+      color: rgba(226, 232, 240, 0.8);
+      border: 1px solid rgba(148, 163, 184, 0.2);
+      cursor: pointer;
+      transition: background 0.18s, color 0.18s, border-color 0.18s;
+      text-align: center;
+    }
+    .step-btn.active {
+      background: rgba(56, 189, 248, 0.2);
+      color: var(--accent);
+      border-color: rgba(56, 189, 248, 0.4);
+    }
+    .step-btn:active { transform: scale(0.95); }
+
+    /* ─── Center STOP button ─── */
+    .stop-wrap {
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      pointer-events: none;
+      flex: 1;
+      padding-bottom: 4px;
+    }
+    #stop-btn {
+      width: clamp(180px, 36vw, 280px);
+      height: clamp(58px, 10vh, 76px);
+      border-radius: 999px;
+      background: transparent;
+      border: 2px solid rgba(248, 113, 113, 0.7);
+      color: var(--danger);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: 0.3em;
+      text-transform: uppercase;
+      pointer-events: auto;
+      cursor: pointer;
+      box-shadow: 0 0 16px rgba(248, 113, 113, 0.2), inset 0 0 12px rgba(248, 113, 113, 0.04);
+      text-shadow: 0 0 10px rgba(248, 113, 113, 0.6);
+      transition: transform 0.12s, box-shadow 0.15s, border-color 0.15s;
+    }
+    #stop-btn:active {
+      transform: scale(0.97) translateY(2px);
+      border-color: rgba(248, 113, 113, 1);
+      box-shadow: 0 0 24px rgba(248, 113, 113, 0.4);
+    }
+    #stop-btn.disabled { opacity: 0.3; pointer-events: none; }
   </style>
 </head>
-<body class="flex items-center justify-center min-h-screen p-4">
+<body>
 
-  <div class="neo-panel p-8 rounded-[3rem] w-full max-w-4xl relative">
-    <div class="absolute top-4 right-8 text-[10px] text-slate-600 font-bold uppercase tracking-widest">
-        Latency: <span id="ms-val" class="text-sky-400">0</span>ms
+<video id="remote-video" autoplay playsinline muted></video>
+<audio id="remote-audio" autoplay playsinline></audio>
+
+<div id="ctrlFsPrompt" class="fs-overlay">
+  <div class="fs-card">
+    <h2>Enter Full Screen</h2>
+    <p>Click below to engage control mode</p>
+    <button id="ctrlFsButton" type="button">Go Full Screen</button>
+  </div>
+</div>
+
+<div class="hud">
+
+  <!-- TOP BAR -->
+  <div class="hud-top">
+    <div class="status-pill">
+      <div class="status-dot" id="status-dot"></div>
+      <span class="status-pill-text">
+        Latency <strong><span id="ms-val">--</span>ms</strong>
+        &nbsp;|&nbsp;
+        <span id="link-status">OFFLINE</span>
+      </span>
     </div>
-    
-    <div class="grid grid-cols-2 gap-12 mb-10 pb-6 border-b border-white/5">
-      <div class="flex flex-col gap-2">
-        <div class="flex justify-between items-center px-1">
-          <span class="text-[10px] font-bold text-slate-500 uppercase">Speed Limit</span>
-          <span id="speed-val" class="text-xl font-black text-purple-400" style="font-family: Orbitron">200</span>
-        </div>
-        <input type="range" id="speed-slider" min="0" max="255" value="200">
-      </div>
-
-      <div class="flex flex-col gap-2">
-        <span class="text-[10px] font-bold text-slate-500 uppercase px-1">Rotation Step</span>
-        <div class="flex gap-2 bg-black/40 p-1 rounded-xl">
-          <button onclick="setStep(15)" class="step-btn flex-1 py-2 rounded-lg text-[10px] font-bold text-slate-500">15°</button>
-          <button onclick="setStep(45)" class="step-btn flex-1 py-2 rounded-lg text-[10px] font-bold text-slate-500">45°</button>
-          <button onclick="setStep(60)" class="step-btn flex-1 py-2 rounded-lg text-[10px] font-bold bg-sky-500/20 text-sky-400 border border-sky-500/30">60°</button>
-          <button onclick="setStep(90)" class="step-btn flex-1 py-2 rounded-lg text-[10px] font-bold text-slate-500">90°</button>
-        </div>
-      </div>
-    </div>
-
-    <div class="grid grid-cols-12 gap-6">
-      
-      <div class="col-span-3 flex flex-col gap-4">
-        <button data-dir="F" class="btn-action h-36 rounded-[2rem] flex flex-col items-center justify-center">
-          <span class="text-[10px] font-bold tracking-widest uppercase opacity-60">Push</span>
-        </button>
-        <button data-dir="B" class="btn-action h-36 rounded-[2rem] flex flex-col items-center justify-center">
-          <span class="text-[10px] font-bold tracking-widest uppercase opacity-60">Back</span>
-        </button>
-      </div>
-
-      <div class="col-span-6 flex flex-col items-center justify-between py-2">
-        <div class="relative w-44 h-44 rounded-full border-2 border-white/5 bg-black/40 flex items-center justify-center shadow-inner">
-          <div id="needle" class="absolute w-1 h-32 bg-sky-400 rounded-full transition-transform duration-500 ease-out"></div>
-          <div class="z-10 text-center">
-            <div id="angle-display" class="text-3xl font-black text-sky-400" style="font-family: Orbitron">0°</div>
-            <div class="text-[8px] text-slate-500 font-bold uppercase mt-1">Heading</div>
-          </div>
-        </div>
-        <button data-dir="S" class="btn-action w-full py-6 rounded-2xl border border-red-500/40 text-red-500 font-black text-xs tracking-[0.4em] mt-6">
-          STOP ENGINE
-        </button>
-      </div>
-
-      <div class="col-span-3 flex flex-col gap-4">
-        <div class="flex gap-4 h-full">
-          <button id="turn-L" class="btn-action flex-1 h-full rounded-[2rem] flex flex-col items-center justify-center group">
-            <span class="text-sky-400 font-black">L</span>
-          </button>
-          <button id="turn-R" class="btn-action flex-1 h-full rounded-[2rem] flex flex-col items-center justify-center group">
-            <span class="text-pink-500 font-black">R</span>
-          </button>
-        </div>
-      </div>
-
+    <div class="media-row">
+      <button id="btnMicSend" class="media-btn" type="button" aria-pressed="true" title="Toggle Mic Send">🎙️</button>
+      <button id="btnCarAudio" class="media-btn" type="button" aria-pressed="true" title="Toggle Car Audio">🔊</button>
+      <button id="btnCarVideo" class="media-btn" type="button" aria-pressed="true" title="Toggle Car Video">🎥</button>
     </div>
   </div>
 
-  <script>
-    let currentAngle = 0, stepSize = 60;
-    let holdTimer = null;
-    let isDriving = false;
+  <!-- BOTTOM CONTROLS -->
+  <div class="hud-bottom">
 
-    const msEl = document.getElementById('ms-val');
-    const angleDisplay = document.getElementById('angle-display');
-    const needle = document.getElementById('needle');
+    <!-- LEFT: Drive + Speed -->
+    <div style="display:flex;flex-direction:column;gap:12px;pointer-events:auto;">
+      <div style="display:flex;gap:10px;">
+        <button class="drive-btn" data-dir="F" type="button">▲</button>
+        <button class="drive-btn" data-dir="B" type="button">▼</button>
+      </div>
+      <div class="speed-group">
+        <div class="speed-header">
+          <span>Speed Limit</span>
+          <span id="speed-val">200</span>
+        </div>
+        <input type="range" id="speed-slider" min="0" max="255" value="200">
+      </div>
+    </div>
 
-    // 1. TIMED ROTATION (Calls Python logic)
-    async function triggerRotation(dir) {
-        const start = performance.now();
-        try {
-            const res = await fetch(`/rotate?dir=${dir}&deg=${stepSize}`);
-            if (res.ok) msEl.textContent = Math.round(performance.now() - start);
-            updateHeading(dir === 'L' ? -stepSize : stepSize);
-        } catch (e) { console.error("Rotation Link Lost"); }
+    <!-- CENTER: STOP -->
+    <div class="stop-wrap">
+      <button id="stop-btn" type="button">STOP</button>
+    </div>
+
+    <!-- RIGHT: Rotation -->
+    <div style="display:flex;flex-direction:column;gap:12px;pointer-events:auto;align-items:flex-end;">
+      <div class="ctrl-panel">
+        <div class="rot-buttons">
+          <button class="rot-btn" id="turn-L" type="button">↺</button>
+          <button class="rot-btn" id="turn-R" type="button">↻</button>
+        </div>
+      </div>
+      <div class="step-grid">
+        <button class="step-btn" onclick="setStep(15)">15°</button>
+        <button class="step-btn" onclick="setStep(45)">45°</button>
+        <button class="step-btn" onclick="setStep(60)">60°</button>
+        <button class="step-btn" onclick="setStep(90)">90°</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+  const HEARTBEAT_INTERVAL_MS = 2000;
+  const MAX_RECONNECT_DELAY_MS = 5000;
+  const WS_URL = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ctrl`;
+  const SIGNAL_URL = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws?role=ctrl`;
+  const SIGNAL_HEARTBEAT_MS = 5000;
+  let STUN_SERVERS = [
+    "stun:stunserver2025.stunprotocol.org:3478",
+    "turn:USERNAME:PASSWORD@turn.example.com:3478?transport=udp"
+  ];
+
+  const msEl = document.getElementById('ms-val');
+  const linkStatusEl = document.getElementById('link-status');
+  const statusDot = document.getElementById('status-dot');
+  const speedSlider = document.getElementById('speed-slider');
+  const speedVal = document.getElementById('speed-val');
+  const driveButtons = Array.from(document.querySelectorAll('.drive-btn'));
+  const stopBtn = document.getElementById('stop-btn');
+  const stepBtns = Array.from(document.querySelectorAll('.step-btn'));
+  const remoteVideo = document.getElementById('remote-video');
+  const remoteAudioEl = document.getElementById('remote-audio');
+  const btnMicSend = document.getElementById('btnMicSend');
+  const btnCarAudio = document.getElementById('btnCarAudio');
+  const btnCarVideo = document.getElementById('btnCarVideo');
+  const fsPrompt = document.getElementById('ctrlFsPrompt');
+  const fsButton = document.getElementById('ctrlFsButton');
+
+  let stepSize = 60;
+  let socket = null;
+  let reconnectDelay = 500;
+  let reconnectTimer = null;
+  let heartbeatTimer = null;
+  let pendingTimes = new Map();
+  let activeDir = null;
+  let stopArmed = false;
+  let lastStatusSnapshot = { esp: false, car: false };
+  let errorFlashTimer = null;
+  let signalSocket = null;
+  let signalReady = false;
+  let signalHeartbeat = null;
+  let signalReconnectTimer = null;
+  let signalQueue = [];
+  let rtc = null;
+  let micStream = null;
+  let micSenders = [];
+  let micTransceiver = null;
+  let configLoaded = false;
+  let pendingIceCandidates = [];
+  let micPublishEnabled = true;
+  let carAudioEnabled = true;
+  let carVideoVisible = true;
+  let controlBootstrapped = false;
+
+function buildRTCConfig() {
+  const iceServers = STUN_SERVERS.map(url => {
+    const match = url.match(/^(turns?):([^:]+):([^@]+)@(.+)$/);
+    if (match) {
+      const [, scheme, username, credential, host] = match;
+      return {
+        urls: `${scheme}:${host}`,
+        username,
+        credential
+      };
     }
+    return { urls: url }; // stun: URLs stay as-is
+  });
 
-    // 2. STANDARD MOVE (Hold-to-move)
-    async function sendCmd(dir) {
-        const start = performance.now();
-        try {
-            const res = await fetch(`/move?dir=${dir}`);
-            if (res.ok) msEl.textContent = Math.round(performance.now() - start);
-        } catch (e) { console.error("Move Link Lost"); }
+  return { iceServers };
+}
+
+  async function loadConfig() {
+    if (configLoaded) return;
+    try {
+      const res = await fetch("/ice-servers", { cache: "no-store" });
+      if (res.ok) {
+        const data = await res.json();
+        const combined = [];
+        if (Array.isArray(data.stun)) combined.push(...data.stun);
+        if (Array.isArray(data.turn)) combined.push(...data.turn);
+        if (!combined.length && Array.isArray(data.stun_servers)) combined.push(...data.stun_servers);
+        if (combined.length) STUN_SERVERS = combined.map(String);
+        console.log("using the follow stun server: ", STUN_SERVERS)
+
+      }
+    } catch (err) {
+      console.warn("Using default STUN servers", err);
+    } finally {
+      configLoaded = true;
     }
+  }
 
-    // Assign Rotation to L/R Buttons
-    document.getElementById('turn-L').onclick = () => triggerRotation('L');
-    document.getElementById('turn-R').onclick = () => triggerRotation('R');
+  function wsReady() {
+    return socket && socket.readyState === WebSocket.OPEN;
+  }
 
-    // Assign Hold Logic to F/B Buttons
-    document.querySelectorAll('[data-dir]').forEach(btn => {
-        const dir = btn.dataset.dir;
-        btn.onpointerdown = (e) => {
-            e.preventDefault();
-            if (dir === 'S') sendCmd('S');
-            else {
-                isDriving = true;
-                sendCmd(dir);
-                holdTimer = setInterval(() => { if(isDriving) sendCmd(dir); }, 200);
-            }
-        };
-        btn.onpointerup = btn.onpointerleave = () => {
-            if (dir !== 'S') {
-                isDriving = false;
-                clearInterval(holdTimer);
-                sendCmd('S');
-            }
-        };
+  function allControls() {
+    return [...driveButtons, stopBtn];
+  }
+
+  async function requestFullscreen(element) {
+    const target = element || document.documentElement;
+    if (!target) return Promise.resolve();
+    if (document.fullscreenElement) return Promise.resolve();
+    const method = target.requestFullscreen || target.webkitRequestFullscreen || target.msRequestFullscreen;
+    if (!method) return Promise.resolve();
+    try {
+      const result = method.call(target);
+      if (result && result.catch) {
+        await result;
+      }
+    } catch (err) {
+      console.warn('Fullscreen request failed', err);
+    }
+  }
+
+  async function bootstrapControl() {
+    if (controlBootstrapped) return;
+    controlBootstrapped = true;
+    if (fsPrompt) fsPrompt.classList.add('hidden');
+    await loadConfig();
+    connectSignalChannel();
+    connectCtrl();
+  }
+
+  function setControlsEnabled(enabled) {
+    driveButtons.forEach(btn => btn.classList.toggle('disabled', !enabled));
+    stopBtn.classList.toggle('disabled', !enabled);
+    speedSlider.disabled = !enabled;
+  }
+
+  function setLinkDisplay(text, online = false) {
+    linkStatusEl.textContent = text;
+    statusDot.classList.toggle('online', online);
+  }
+
+  function applyLinkStatus() {
+    if (!wsReady()) {
+      setLinkDisplay('OFFLINE', false);
+      setControlsEnabled(false);
+      return;
+    }
+    const missing = [];
+    if (!lastStatusSnapshot.esp) missing.push('ESP');
+    if (!lastStatusSnapshot.car) missing.push('CAR');
+    if (missing.length === 0) {
+      setLinkDisplay('ONLINE', true);
+      setControlsEnabled(true);
+    } else {
+      setLinkDisplay(`WAITING ${missing.join('+')}`, false);
+      setControlsEnabled(false);
+    }
+  }
+
+  function flashError(reason) {
+    clearTimeout(errorFlashTimer);
+    linkStatusEl.textContent = `ERR: ${reason}`;
+    linkStatusEl.style.color = '#f87171';
+    errorFlashTimer = setTimeout(() => {
+      linkStatusEl.style.color = '';
+      applyLinkStatus();
+    }, 2000);
+  }
+
+  function recordLatency(key) { pendingTimes.set(key, performance.now()); }
+  function fulfillLatency(key) {
+    const start = pendingTimes.get(key);
+    if (start) {
+      msEl.textContent = Math.max(1, Math.round(performance.now() - start));
+      pendingTimes.delete(key);
+    }
+  }
+
+  function clearActiveButtons() {
+    driveButtons.forEach(btn => btn.classList.remove('active'));
+  }
+
+  function sendWs(payload) {
+    if (!wsReady()) return false;
+    try { socket.send(JSON.stringify(payload)); return true; }
+    catch (err) { console.error('WS send failed', err); return false; }
+  }
+
+  function sendDrive(dir) {
+    if (!wsReady()) return;
+    stopArmed = true;
+    recordLatency(`drive:${dir}`);
+    if (!sendWs({ type: 'drive', dir })) flashError('NO LINK');
+  }
+
+  function sendStop(force = false) {
+    if (!force && !stopArmed) return;
+    stopArmed = false;
+    if (!wsReady()) return;
+    recordLatency('stop');
+    if (!sendWs({ type: 'stop' })) flashError('NO LINK');
+  }
+
+  function connectCtrl() {
+    clearTimeout(reconnectTimer);
+    if (socket && socket.readyState === WebSocket.CONNECTING) return;
+    if (wsReady()) return;
+    setLinkDisplay('CONNECTING…', false);
+    socket = new WebSocket(WS_URL);
+
+    socket.addEventListener('open', () => {
+      reconnectDelay = 500;
+      msEl.textContent = '--';
+      setControlsEnabled(false);
+      sendWs({ type: 'hello', client: 'controller', version: '3.0' });
+      sendWs({ type: 'status' });
+      heartbeatTimer = setInterval(() => sendWs({ type: 'heartbeat' }), HEARTBEAT_INTERVAL_MS);
     });
 
-    // Step Selector
-    function setStep(val) {
-        stepSize = val;
-        document.querySelectorAll('.step-btn').forEach(btn => {
-            btn.className = "step-btn flex-1 py-2 rounded-lg text-[10px] font-bold text-slate-500";
-            if(parseInt(btn.innerText) === val) {
-                btn.className = "step-btn flex-1 py-2 rounded-lg text-[10px] font-bold bg-sky-500/20 text-sky-400 border border-sky-500/30";
-            }
-        });
+    socket.addEventListener('message', (event) => {
+      try { handleMessage(JSON.parse(event.data)); }
+      catch (err) { console.error('Bad payload', err); }
+    });
+
+    socket.addEventListener('close', () => {
+      clearInterval(heartbeatTimer); heartbeatTimer = null;
+      msEl.textContent = '--'; activeDir = null; stopArmed = false;
+      pendingTimes.clear(); clearActiveButtons(); applyLinkStatus();
+      scheduleReconnect();
+    });
+
+    socket.addEventListener('error', (err) => { console.warn('WS error', err); socket.close(); });
+  }
+
+  function scheduleReconnect() {
+    if (reconnectTimer) return;
+    setLinkDisplay('OFFLINE', false);
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = null;
+      reconnectDelay = Math.min(reconnectDelay * 1.5, MAX_RECONNECT_DELAY_MS);
+      connectCtrl();
+    }, reconnectDelay);
+  }
+
+  function handleMessage(payload) {
+    switch ((payload.type || '').toLowerCase()) {
+      case 'ack': handleAck(payload); break;
+      case 'status': handleStatus(payload); break;
+      case 'error': flashError(payload.reason || 'UNKNOWN'); break;
+    }
+  }
+
+  function handleAck(payload) {
+    const baseKey = payload.cmd === 'drive' ? `drive:${payload.dir || ''}` : payload.cmd;
+    fulfillLatency(baseKey);
+    if (payload.status !== 'ok') {
+      flashError(payload.reason || 'FAILED');
+      if (payload.cmd === 'drive' || payload.cmd === 'stop') { activeDir = null; stopArmed = false; clearActiveButtons(); }
+      return;
+    }
+    switch (payload.cmd) {
+      case 'drive': activeDir = payload.dir || null; break;
+      case 'stop': activeDir = null; stopArmed = false; clearActiveButtons(); break;
+    }
+    applyLinkStatus();
+  }
+
+  function handleStatus(payload) {
+    lastStatusSnapshot = { esp: !!payload.esp?.connected, car: !!payload.car?.connected };
+    applyLinkStatus();
+  }
+
+  // Signal / WebRTC
+  function connectSignalChannel() {
+    if (signalSocket && (signalSocket.readyState === WebSocket.OPEN || signalSocket.readyState === WebSocket.CONNECTING)) return;
+    if (signalReconnectTimer) { clearTimeout(signalReconnectTimer); signalReconnectTimer = null; }
+    signalSocket = new WebSocket(SIGNAL_URL);
+    signalSocket.addEventListener('open', () => {
+      signalReady = true;
+      if (signalHeartbeat) clearInterval(signalHeartbeat);
+      signalHeartbeat = setInterval(() => sigSend({ type: 'heartbeat' }), SIGNAL_HEARTBEAT_MS);
+      sigSend({ type: 'hello', client: 'controller' });
+      const queued = [...signalQueue]; signalQueue = [];
+      queued.forEach(sigSend);
+    });
+    signalSocket.addEventListener('message', (event) => {
+      try { handleSignalPayload(JSON.parse(event.data)); } catch (err) { console.error('Signal payload error', err); }
+    });
+    signalSocket.addEventListener('close', () => {
+      signalReady = false;
+      if (signalHeartbeat) { clearInterval(signalHeartbeat); signalHeartbeat = null; }
+      scheduleSignalReconnect(); teardownPeer();
+    });
+    signalSocket.addEventListener('error', (err) => { console.warn('Signal error', err); signalSocket.close(); });
+  }
+
+  function scheduleSignalReconnect() {
+    if (signalReconnectTimer) return;
+    signalReconnectTimer = setTimeout(() => { signalReconnectTimer = null; connectSignalChannel(); }, SIGNAL_HEARTBEAT_MS);
+  }
+
+  function sigSend(message) {
+    if (signalReady && signalSocket && signalSocket.readyState === WebSocket.OPEN) {
+      signalSocket.send(JSON.stringify(message));
+    } else { signalQueue.push(message); }
+  }
+
+  async function handleSignalPayload(payload) {
+    const type = (payload.type || '').toLowerCase();
+    if (type === 'offer' && payload.offer) { await setupPeer(payload.offer); return; }
+    if (type === 'ice' && payload.candidate) {
+      if (!rtc || !rtc.remoteDescription || rtc.remoteDescription.type === "") {
+        pendingIceCandidates.push(payload.candidate);
+      } else {
+        try { await rtc.addIceCandidate(new RTCIceCandidate(payload.candidate)); } catch (err) { console.error('ICE add failed', err); }
+      }
+      return;
+    }
+    if (type === 'peer_left') { teardownPeer(); return; }
+    if (type === 'error') flashError(payload.reason || 'SIGNAL ERR');
+  }
+
+  function updateMicToggleUI() {
+    if (!btnMicSend) return;
+    btnMicSend.classList.toggle('off', !micPublishEnabled);
+    btnMicSend.setAttribute('aria-pressed', micPublishEnabled);
+    btnMicSend.textContent = micPublishEnabled ? '🎙️' : '🚫';
+  }
+
+  function refreshCarAudioState() {
+    remoteAudioEl.muted = !carAudioEnabled;
+    if (btnCarAudio) {
+      btnCarAudio.classList.toggle('off', !carAudioEnabled);
+      btnCarAudio.setAttribute('aria-pressed', carAudioEnabled);
+      btnCarAudio.textContent = carAudioEnabled ? '🔊' : '🔇';
+    }
+  }
+
+  function refreshCarVideoState() {
+    if (btnCarVideo) {
+      btnCarVideo.classList.toggle('off', !carVideoVisible);
+      btnCarVideo.setAttribute('aria-pressed', carVideoVisible);
+      btnCarVideo.textContent = carVideoVisible ? '🎥' : '🚫';
+    }
+    if (carVideoVisible) {
+      remoteVideo.style.display = '';
+      if (remoteVideo.srcObject) remoteVideo.play().catch(() => {});
+    } else {
+      remoteVideo.style.display = 'none';
+      try { remoteVideo.pause(); } catch (_) {}
+    }
+  }
+
+  function detachMicSenders() {
+    micSenders.forEach(sender => { try { sender.replaceTrack(null); } catch (err) {} });
+  }
+
+  function releaseMicStream() {
+    if (micStream) micStream.getTracks().forEach(track => { try { track.stop(); } catch (_) {} });
+    micStream = null;
+  }
+
+  async function ensureMicStream() {
+    if (!micPublishEnabled) return null;
+    if (micStream && micStream.getAudioTracks().some(t => t.readyState === 'live')) return micStream;
+    try {
+      micStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+    } catch (err) {
+      flashError('MIC BLOCKED'); micStream = null; micPublishEnabled = false;
+    }
+    updateMicToggleUI();
+    return micStream;
+  }
+
+  function attachMicToPeer() {
+    if (!rtc || !micStream) return;
+    const tracks = micStream.getAudioTracks();
+    if (!tracks.length) return;
+    if (!micSenders.length) {
+      tracks.forEach(track => micSenders.push(rtc.addTrack(track, micStream)));
+      return;
+    }
+    micSenders.forEach(sender => { try { sender.replaceTrack(tracks[0]); } catch (err) {} });
+  }
+
+  async function refreshMicPublishState() {
+    if (!micPublishEnabled) { detachMicSenders(); releaseMicStream(); updateMicToggleUI(); return; }
+    const stream = await ensureMicStream();
+    if (!stream) { micPublishEnabled = false; updateMicToggleUI(); return; }
+    if (rtc) attachMicToPeer();
+    updateMicToggleUI();
+  }
+
+async function setupPeer(offer) {
+    teardownPeer();
+    rtc = new RTCPeerConnection(buildRTCConfig());
+    micSenders = [];
+
+    rtc.ontrack = (event) => {
+      console.log('[RTC] ontrack fired, kind:', event.track.kind, 'streams:', event.streams.length);
+      const track = event.track;
+
+      if (track.kind === 'video') {
+        const stream = event.streams[0] || new MediaStream([track]);
+        remoteVideo.srcObject = stream;
+        console.log('[RTC] video srcObject set');
+        refreshCarVideoState();
+        remoteVideo.play().catch(e => console.error('[RTC] video.play() failed:', e));
+      } else if (track.kind === 'audio') {
+        const stream = event.streams[0] || new MediaStream([track]);
+        console.log("this is the stream:",stream)
+        remoteAudioEl.srcObject = stream;
+        refreshCarAudioState();
+      }
+    };
+
+    rtc.onicecandidate = (event) => {
+      if (event.candidate) sigSend({ type: 'ice', candidate: event.candidate });
+    };
+
+    rtc.oniceconnectionstatechange = () => {
+      const state = rtc.iceConnectionState;
+      console.log('[RTC] ICE state:', state);
+      if (state === 'failed' || state === 'disconnected' || state === 'closed') {
+        flashError('RTC LOST'); teardownPeer();
+      }
+    };
+
+    rtc.onconnectionstatechange = () => {
+      console.log('[RTC] connection state:', rtc.connectionState);
+    };
+
+    await rtc.setRemoteDescription(new RTCSessionDescription(offer));
+    console.log('[RTC] remote description set, transceivers:', rtc.getTransceivers().map(t => t.receiver.track.kind + ' dir=' + t.direction + ' iceState=' + t.iceTransport?.state));
+
+    const audioTransceiver = rtc.getTransceivers().find(t => t.receiver.track.kind === 'audio');
+    if (audioTransceiver) {
+      micTransceiver = audioTransceiver;
+      audioTransceiver.direction = 'sendrecv';
+      micSenders.push(audioTransceiver.sender);
+      console.log('[RTC] audio transceiver found, set to sendrecv');
+    } else {
+      console.warn('[RTC] no audio transceiver found');
     }
 
-    function updateHeading(delta) {
-        currentAngle = (currentAngle + delta + 360) % 360;
-        angleDisplay.textContent = `${currentAngle}°`;
-        needle.style.transform = `rotate(${currentAngle}deg)`;
+    if (micPublishEnabled) {
+      const stream = await ensureMicStream();
+      if (stream) attachMicToPeer();
+      else { micPublishEnabled = false; detachMicSenders(); updateMicToggleUI(); }
+    } else {
+      detachMicSenders();
     }
 
-    // Speed Slider
-    document.getElementById('speed-slider').oninput = (e) => {
-        document.getElementById('speed-val').textContent = e.target.value;
+    const answer = await rtc.createAnswer();
+    await rtc.setLocalDescription(answer);
+    console.log('[RTC] answer created and set, sending to car');
+    sigSend({ type: 'answer', answer: rtc.localDescription });
+
+    for (const candidate of pendingIceCandidates) {
+      try { await rtc.addIceCandidate(new RTCIceCandidate(candidate)); } catch (err) {}
+    }
+    pendingIceCandidates = [];
+}
+function teardownPeer() {
+    if (rtc) { try { rtc.close(); } catch (_) {} }
+    rtc = null; micSenders = []; micTransceiver = null;
+    if (remoteVideo) { try { remoteVideo.pause(); } catch (_) {} remoteVideo.srcObject = null; }
+    if (remoteAudioEl) remoteAudioEl.srcObject = null;
+    pendingIceCandidates = [];
+    refreshCarAudioState(); refreshCarVideoState();
+  }
+
+  async function triggerRotation(dir) {
+    if (!wsReady() || !lastStatusSnapshot.esp) { flashError('OFFLINE'); return; }
+    const start = performance.now();
+    try {
+      const res = await fetch("/rotate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dir, deg: stepSize })
+      });
+      if (res.ok) msEl.textContent = Math.round(performance.now() - start);
+      else flashError('ROTATE FAIL');
+    } catch (e) { flashError('ROTATE LINK'); }
+  }
+
+  function setStep(val) {
+    stepSize = val;
+    stepBtns.forEach(btn => {
+      const btnVal = parseInt(btn.textContent);
+      btn.classList.toggle('active', btnVal === val);
+    });
+  }
+
+  // Drive button bindings
+  driveButtons.forEach(btn => {
+    const dir = btn.dataset.dir;
+    btn.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      if (!wsReady()) return;
+      btn.classList.add('active');
+      sendDrive(dir);
+    });
+    const end = (e) => {
+      e.preventDefault();
+      btn.classList.remove('active');
+      if (!wsReady()) return;
+      sendStop();
     };
-    document.getElementById('speed-slider').onchange = (e) => {
-        fetch(`/speed?val=${e.target.value}`);
-    };
-  </script>
+    btn.addEventListener('pointerup', end);
+    btn.addEventListener('pointerleave', end);
+    btn.addEventListener('pointercancel', end);
+  });
+
+  stopBtn.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    sendStop(true);
+  });
+
+  document.getElementById('turn-L').onclick = () => triggerRotation('L');
+  document.getElementById('turn-R').onclick = () => triggerRotation('R');
+
+  const keyBindings = { arrowup: 'F', w: 'F', arrowdown: 'B', s: 'B', ' ': 'S' };
+  document.addEventListener('keydown', (e) => {
+    if (e.repeat) return;
+    const dir = keyBindings[e.key.toLowerCase()] || keyBindings[e.code.toLowerCase()];
+    if (!dir) return;
+    const btn = document.querySelector(`[data-dir="${dir}"]`);
+    if (btn) btn.classList.add('active');
+    if (dir === 'S') sendStop(true); else sendDrive(dir);
+  });
+  document.addEventListener('keyup', (e) => {
+    const dir = keyBindings[e.key.toLowerCase()] || keyBindings[e.code.toLowerCase()];
+    if (!dir) return;
+    const btn = document.querySelector(`[data-dir="${dir}"]`);
+    if (btn) btn.classList.remove('active');
+    if (dir !== 'S') sendStop();
+  });
+
+  speedSlider.addEventListener('input', (e) => { speedVal.textContent = e.target.value; });
+  speedSlider.addEventListener('change', (e) => {
+    const value = Number(e.target.value);
+    if (wsReady()) {
+      recordLatency('speed');
+      if (!sendWs({ type: 'speed', value })) flashError('NO LINK');
+    } else {
+      fetch("/speed", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ val: value }) });
+    }
+  });
+
+  btnMicSend.addEventListener('click', async () => { micPublishEnabled = !micPublishEnabled; await refreshMicPublishState(); });
+  btnCarAudio.addEventListener('click', () => { carAudioEnabled = !carAudioEnabled; refreshCarAudioState(); });
+  btnCarVideo.addEventListener('click', () => { carVideoVisible = !carVideoVisible; refreshCarVideoState(); });
+
+  setStep(stepSize);
+  setControlsEnabled(false);
+  setLinkDisplay('OFFLINE', false);
+  updateMicToggleUI(); refreshCarAudioState(); refreshCarVideoState();
+
+  window.addEventListener('focus', () => {
+    if (!controlBootstrapped) return;
+    connectSignalChannel();
+    connectCtrl();
+  });
+  window.addEventListener('beforeunload', () => {
+    if (socket) try { socket.close(); } catch (_) {}
+    if (signalSocket) try { signalSocket.close(); } catch (_) {}
+  });
+
+  if (fsButton) {
+    fsButton.addEventListener('click', async () => {
+      await requestFullscreen(document.documentElement);
+      if (fsPrompt) fsPrompt.classList.add('hidden');
+      await bootstrapControl();
+    });
+  }
+
+  window.addEventListener('load', () => {
+    if (fsPrompt) {
+      fsPrompt.classList.remove('hidden');
+      if (fsButton) {
+        try { fsButton.focus(); } catch (_) {}
+      }
+    } else {
+      bootstrapControl();
+    }
+  });
+</script>
 </body>
 </html>

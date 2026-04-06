@@ -6,57 +6,267 @@
 <title>🚗 Car Node (Two-Way)</title>
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet"/>
 <style>
-:root{--bg:#060810;--surface:#0d0f1a;--border:#1a1d2e;--accent:#c084fc;--accent2:#f472b6;--green:#4ade80;--red:#f87171;--dim:#3d3958}
-*{box-sizing:border-box;margin:0;padding:0}
-html,body{width:100%;height:100%;background:var(--bg);color:#e2d9f3;font-family:'Share Tech Mono',monospace;display:flex;align-items:center;justify-content:center}
-.card{background:var(--surface);border:1px solid var(--border);border-radius:24px;padding:40px 32px;text-align:center;max-width:340px;width:92%;box-shadow:0 0 60px rgba(192,132,252,.07)}
-.logo{font-family:'Orbitron',sans-serif;font-weight:900;font-size:20px;letter-spacing:.2em;margin-bottom:4px;background:linear-gradient(90deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
-.sub{font-size:10px;color:var(--dim);letter-spacing:.15em;margin-bottom:30px}
-.orb{width:108px;height:108px;border-radius:50%;margin:0 auto 24px;display:flex;align-items:center;justify-content:center;font-size:40px;border:2px solid var(--border);background:var(--surface);transition:box-shadow .4s,border-color .4s}
-.orb.waiting{animation:breathe 2.5s ease-in-out infinite}
-.orb.live{border-color:var(--green);box-shadow:0 0 30px rgba(74,222,128,.4)}
-.orb.err{border-color:var(--red);box-shadow:0 0 24px rgba(248,113,113,.35)}
-@keyframes breathe{0%,100%{box-shadow:none}50%{box-shadow:0 0 20px rgba(192,132,252,.2)}}
-.status{font-family:'Orbitron',sans-serif;font-weight:700;font-size:13px;letter-spacing:.15em;margin-bottom:8px;color:var(--accent)}
-.status.live{color:var(--green)}.status.err{color:var(--red)}
-.detail{font-size:10px;color:var(--dim);letter-spacing:.08em;min-height:16px;margin-bottom:24px}
-.row{display:flex;justify-content:space-between;align-items:center;font-size:10px;margin-bottom:8px}
-.k{color:var(--dim);letter-spacing:.1em}.v{color:var(--accent)}
-select.v { background: #1a1d2e; border: 1px solid var(--border); border-radius: 4px; padding: 2px 4px; font-family: inherit; font-size: 10px; outline: none; max-width: 150px; color: var(--accent); }
-hr{border:none;border-top:1px solid var(--border);margin:20px 0}
-.btn{background:transparent;border:1px solid var(--border);color:var(--dim);border-radius:10px;padding:8px 18px;font-family:'Share Tech Mono',monospace;font-size:10px;letter-spacing:.1em;cursor:pointer;transition:border-color .2s,color .2s;margin-top:4px}
-.btn:hover{border-color:var(--accent2);color:var(--accent2)}
-#preview{position:fixed;bottom:14px;right:14px;width:90px;height:68px;border-radius:10px;object-fit:cover;border:1px solid var(--border);opacity:.75;display:none;z-index:100}
+:root{
+  --hud-bg:rgba(6,10,18,0.92);
+  --glow:#00c8d7;
+  --glow-soft:rgba(0,200,215,0.08);
+  --panel-bg:rgba(10,16,26,0.92);
+  --panel-border:rgba(56,189,248,0.22);
+  --text-dim:#93c5fd;
+  --text-lite:#e2e8f0;
+  --text-muted:#64748b;
+  --danger:#f87171;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{width:100%;height:100%;font-family:'Share Tech Mono',monospace;background:#05070d;color:var(--text-dim);overflow:hidden}
+body{display:flex;align-items:center;justify-content:center;position:relative}
+
+#root{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#05070d}
+#screen{position:relative;width:100%;height:100%;display:flex;align-items:center;justify-content:center;overflow:hidden}
+#ambient{position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse 55% 60% at 50% 50%,rgba(0,200,215,.08)0%,transparent 70%);transition:background 1s ease}
+
+.settings-btn{position:absolute;top:20px;right:22px;width:42px;height:42px;border-radius:14px;border:1px solid rgba(59,130,246,0.35);background:rgba(10,16,26,0.6);color:#60a5fa;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:transform .12s ease,background .2s ease,border-color .2s ease;z-index:25}
+.settings-btn:hover{background:rgba(14,22,36,0.9);border-color:#f472b6;color:#f472b6}
+.settings-btn:active{transform:scale(0.94)}
+.settings-btn svg{width:18px;height:18px;fill:currentColor}
+.settings-btn:focus-visible{outline:2px solid #f472b6;outline-offset:2px}
+
+.fs-overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(5,7,13,0.94);backdrop-filter:blur(14px);z-index:60;transition:opacity .25s ease;opacity:1}
+.fs-overlay.hidden{opacity:0;pointer-events:none}
+.fs-card{background:rgba(10,16,26,0.92);border:1px solid rgba(59,130,246,0.25);border-radius:24px;padding:36px 42px;max-width:360px;width:90%;text-align:center;box-shadow:0 24px 70px rgba(8,11,19,0.62)}
+.fs-card h2{font-family:'Orbitron',sans-serif;font-weight:700;font-size:18px;letter-spacing:.3em;color:#38bdf8;margin-bottom:12px;text-transform:uppercase}
+.fs-card p{font-size:11px;letter-spacing:.16em;color:#94a3b8;margin-bottom:26px;text-transform:uppercase}
+.fs-card button{padding:12px 28px;border-radius:16px;border:1px solid rgba(59,130,246,0.45);background:rgba(59,130,246,0.1);color:#e2e8f0;font-size:11px;letter-spacing:.2em;text-transform:uppercase;cursor:pointer;transition:background .2s ease,border-color .2s ease,color .2s ease}
+.fs-card button:hover{background:rgba(244,114,182,0.12);border-color:#f472b6;color:#f472b6}
+
+#eyes-wrap{position:relative;display:flex;gap:56px;align-items:center;justify-content:center;z-index:10;filter:drop-shadow(0 0 45px rgba(0,200,215,0.45))}
+.eye-slot{width:158px;height:140px;display:flex;align-items:center;justify-content:center;position:relative;overflow:unset}
+.eye{position:absolute;width:132px;height:112px;border-radius:42px;background:#00c8d7;box-shadow:0 0 42px rgba(0,200,215,.65),0 0 120px rgba(0,200,215,.22);transition:width .22s ease,height .22s ease,border-radius .22s ease,background .3s ease,box-shadow .3s ease}
+.lid-t,.lid-b{position:absolute;left:-3px;right:-3px;background:#05070d;z-index:5;transition:height .18s ease}
+.lid-t{top:0;height:0%}
+.lid-b{bottom:0;height:0%}
+
+#sdot{position:absolute;top:22px;right:26px;width:7px;height:7px;border-radius:50%;background:rgba(0,200,215,0.25);box-shadow:0 0 0 rgba(0,200,215,0);transition:background .3s ease,box-shadow .3s ease;z-index:15}
+#sdot.listen{background:rgba(0,200,215,0.85);box-shadow:0 0 10px rgba(0,200,215,0.75);animation:pulse 1.4s ease-in-out infinite}
+#sdot.speak{background:rgba(100,220,150,0.9);box-shadow:0 0 10px rgba(100,220,150,0.7);animation:none}
+@keyframes pulse{0%,100%{transform:scale(1);opacity:0.6}50%{transform:scale(1.4);opacity:1}}
+
+#dots,#wave{position:absolute;left:50%;transform:translateX(-50%);display:flex;gap:5px;opacity:0;transition:opacity .3s ease;pointer-events:none;z-index:18}
+#dots{bottom:calc(50% + 92px)}
+#dots.show{opacity:1}
+.dot{width:5px;height:5px;border-radius:50%;background:rgba(0,200,215,0.75);animation:dots 1.1s ease-in-out infinite}
+.dot:nth-child(2){animation-delay:.18s}
+.dot:nth-child(3){animation-delay:.36s}
+@keyframes dots{0%,100%{transform:translateY(0);opacity:.35}50%{transform:translateY(-6px);opacity:1}}
+
+#wave{top:calc(50% + 92px);align-items:flex-end;height:18px}
+#wave.show{opacity:1}
+.bar{width:4px;background:rgba(0,200,215,.75);border-radius:2px;height:6px;animation:wave .8s ease-in-out infinite}
+.bar:nth-child(2){animation-delay:.08s}
+.bar:nth-child(3){animation-delay:.16s}
+.bar:nth-child(4){animation-delay:.08s}
+@keyframes wave{0%,100%{height:6px}50%{height:18px}}
+
+#hud{position:fixed;inset:0;background:var(--hud-bg);backdrop-filter:blur(22px);display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity .25s ease;z-index:40;padding:36px 24px}
+#hud.visible{opacity:1;pointer-events:auto}
+#hud .panel{background:var(--panel-bg);border:1px solid var(--panel-border);border-radius:22px;padding:30px;width:min(360px,92%);color:var(--text-lite);box-shadow:0 24px 70px rgba(8,11,19,0.62);max-height:100%;overflow:auto}
+.hud-header{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:18px}
+.hud-title-wrap{display:flex;flex-direction:column;gap:6px}
+.hud-title{font-size:10px;letter-spacing:.28em;text-transform:uppercase;color:#60a5fa}
+.hud-hint{font-size:9px;color:var(--text-muted);letter-spacing:.18em}
+.hud-close{background:rgba(15,23,42,0.6);border:1px solid rgba(59,130,246,0.35);color:#60a5fa;border-radius:12px;width:34px;height:28px;display:flex;align-items:center;justify-content:center;font-size:14px;line-height:1;cursor:pointer;transition:background .2s ease,border-color .2s ease,color .2s ease}
+.hud-close:hover{background:rgba(244,114,182,0.12);border-color:#f472b6;color:#f472b6}
+.hud-close:focus-visible{outline:2px solid #f472b6;outline-offset:2px}
+.status{font-family:'Orbitron',sans-serif;font-weight:700;font-size:15px;letter-spacing:.2em;margin-bottom:12px;color:#60a5fa;text-align:center}
+.status.live{color:#38bdf8}
+.status.err{color:var(--danger)}
+.detail{font-size:11px;color:#94a3b8;letter-spacing:.12em;min-height:18px;margin-bottom:20px;text-align:center}
+.row{display:flex;justify-content:space-between;align-items:center;font-size:10px;margin-bottom:12px;color:var(--text-lite)}
+.row .k{color:var(--text-muted);letter-spacing:.15em;text-transform:uppercase}
+.row .v{color:#60a5fa;letter-spacing:.1em}
+.control-bar{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:22px 0}
+.control-btn{padding:11px;border-radius:12px;border:1px solid rgba(59,130,246,.35);color:#60a5fa;font-size:9px;letter-spacing:.18em;text-transform:uppercase;background:rgba(15,23,42,.72);transition:all .15s ease}
+.control-btn.off{border-color:rgba(71,85,105,.5);color:#475569;background:rgba(15,23,42,.45);opacity:.8}
+.control-btn.danger{border-color:rgba(248,113,113,.6);color:var(--danger);background:rgba(59,7,10,.6)}
+.btn{background:transparent;border:1px solid rgba(59,130,246,.35);color:#60a5fa;border-radius:14px;padding:10px 22px;font-size:10px;letter-spacing:.2em;cursor:pointer;transition:border-color .2s,color .2s}
+.btn:hover{border-color:#f472b6;color:#f472b6}
+.btn-row{display:flex;gap:12px;justify-content:center;margin-top:4px}
+hr{border:none;border-top:1px solid rgba(59,130,246,.18);margin:20px 0}
+select.v{background:rgba(17,24,39,.82);border:1px solid rgba(59,130,246,.25);border-radius:8px;padding:4px 6px;font-family:inherit;font-size:10px;outline:none;max-width:170px;color:#bfdbfe}
+#preview{position:fixed;bottom:26px;right:26px;width:128px;height:84px;border-radius:18px;object-fit:cover;border:1px solid rgba(59,130,246,.28);opacity:.75;display:none;z-index:35;box-shadow:0 12px 35px rgba(15,23,42,0.48)}
+
+@media (max-width:680px){
+  #eyes-wrap{gap:38px}
+  .eye-slot{width:124px;height:110px}
+  .eye{width:110px;height:92px}
+  #hud .panel{padding:26px}
+}
 </style>
 </head>
 <body>
-<div class="card">
-  <div class="logo">CAR NODE</div>
-  <div class="sub">TWO-WAY TRANSMITTER</div>
-  <div class="orb waiting" id="orb">📡</div>
-  <div class="status" id="st">STARTING…</div>
-  <div class="detail" id="det">Accessing camera & mic</div>
-  <hr/>
-  <div class="row">
-    <span class="k">SOURCE</span>
-    <select id="camSelect" class="v"><option>SCANNING...</option></select>
+<div id="root">
+  <div id="screen">
+    <div id="ambient"></div>
+    <div id="sdot"></div>
+    <button id="settingsToggle" class="settings-btn" type="button" aria-label="Open settings panel" aria-expanded="false">
+      <svg viewBox="0 0 24 24" role="img" aria-hidden="true"><path d="M12 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7Zm9.44-2.82-1.26-.73a7.53 7.53 0 0 0 0-1.9l1.26-.73a.75.75 0 0 0 .27-1.02l-1.43-2.48a.75.75 0 0 0-.97-.32l-1.28.5a7.53 7.53 0 0 0-1.65-.95l-.2-1.35A.75.75 0 0 0 15.2 3h-2.84a.75.75 0 0 0-.74.63l-.2 1.35a7.53 7.53 0 0 0-1.65.95l-1.28-.5a.75.75 0 0 0-.97.32L6.09 7.23a.75.75 0 0 0 .28 1.02l1.26.73a7.53 7.53 0 0 0 0 1.9l-1.26.73a.75.75 0 0 0-.28 1.02l1.43 2.48c.19.33.6.47.97.32l1.28-.5c.5.4 1.05.73 1.65.95l.2 1.35c.06.36.37.63.74.63h2.84c.37 0 .68-.27.74-.63l.2-1.35c.6-.22 1.15-.55 1.65-.95l1.28.5c.36.15.78.01.97-.32l1.43-2.48a.75.75 0 0 0-.27-1.02Z"/></svg>
+    </button>
+    <div id="dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
+    <div id="wave"><div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div></div>
+    <div id="eyes-wrap" class="eyes" aria-hidden="true">
+      <div class="eye-slot">
+        <div class="eye" id="el">
+          <div class="lid-t" id="lt"></div>
+          <div class="lid-b" id="lb"></div>
+        </div>
+      </div>
+      <div class="eye-slot">
+        <div class="eye" id="er">
+          <div class="lid-t" id="rt"></div>
+          <div class="lid-b" id="rb"></div>
+        </div>
+      </div>
+    </div>
   </div>
-  <div class="row"><span class="k">CAMERA</span><span class="v" id="iCam">—</span></div>
-  <div class="row"><span class="k">MIC (IN/OUT)</span><span class="v" id="iMic">—</span></div>
-  <div class="row"><span class="k">ICE</span><span class="v" id="iIce">—</span></div>
-  <button class="btn" id="btnReset">↺ RESET</button>
+</div>
+
+<div id="fsPrompt" class="fs-overlay">
+  <div class="fs-card">
+    <h2>Enter Full Screen</h2>
+    <p>Click below to unlock the driving interface</p>
+    <button id="fsButton" type="button">Go Full Screen</button>
+  </div>
+</div>
+
+<div id="hud">
+  <div class="panel">
+    <div class="hud-header">
+      <div class="hud-title-wrap">
+        <span class="hud-title">CAR NODE · SETTINGS</span>
+        <span class="hud-hint">Use gear icon · ESC to close</span>
+      </div>
+      <button id="btnCloseHud" class="hud-close" type="button" aria-label="Close settings">✕</button>
+    </div>
+    <div class="status" id="st">STARTING…</div>
+    <div class="detail" id="det">Accessing camera &amp; mic</div>
+    <hr/>
+    <div class="row">
+      <span class="k">SOURCE</span>
+      <select id="camSelect" class="v"><option>SCANNING...</option></select>
+    </div>
+    <div class="row"><span class="k">CAMERA</span><span class="v" id="iCam">—</span></div>
+    <div class="row"><span class="k">MIC (IN/OUT)</span><span class="v" id="iMic">—</span></div>
+    <div class="row"><span class="k">ICE</span><span class="v" id="iIce">—</span></div>
+    <div class="control-bar">
+      <button class="control-btn" id="btnMuteMic" type="button">MUTE MIC</button>
+      <button class="control-btn" id="btnMuteController" type="button">MUTE CTRL</button>
+      <button class="control-btn" id="btnToggleCamera" type="button">STOP CAMERA</button>
+      <button class="control-btn danger" id="btnDisconnect" type="button">DISCONNECT</button>
+    </div>
+    <div class="btn-row">
+      <button class="btn" id="btnReset">↺ RESET</button>
+      <button class="btn" id="btnClosePanel">✕ CLOSE</button>
+    </div>
+  </div>
 </div>
 
 <video id="preview" autoplay playsinline muted></video>
 <audio id="remoteAudio" autoplay playsinline></audio>
 
 <script>
-const PC_CONFIG = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
-let pc, stream, pollTimer;
-let knownCtrlIce = 0;
+let STUN_SERVERS = [
+  "stun:stunserver2025.stunprotocol.org:3478",
+  "turn:USERNAME:PASSWORD@turn.example.com:3478?transport=udp" // ← replace with your private TURN URL
+];
+const SIG_URL = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws?role=car`;
+const SIGNAL_HEARTBEAT_MS = 5000;
+const SIGNAL_RECONNECT_MS = 2500;
+let pc = null;
+let sigSocket = null;
+let signalReady = false;
+let signalHeartbeat = null;
+let signalReconnectTimer = null;
+let pendingSignalMessages = [];
+let pendingRestart = false;
 let currentDeviceId = null;
+let configLoaded = false;
+let localStream = null;
+let localAudioTrack = null;
+let localVideoTrack = null;
+let micSenders = [];
+let camSenders = [];
+let micTransceiver = null;
+let camTransceiver = null;
+let carMicEnabled = true;
+let controllerAudioEnabled = true;
+let carCameraEnabled = true;
+let manualDisconnect = false;
+let settingsOpen = false;
+let appBootstrapped = false;
+let activeCameraDeviceId = null;
 
-const orb = document.getElementById('orb');
+function buildRTCConfig() {
+  const iceServers = STUN_SERVERS.map(url => {
+    const match = url.match(/^(turns?):([^:]+):([^@]+)@(.+)$/);
+    if (match) {
+      const [, scheme, username, credential, host] = match;
+      return {
+        urls: `${scheme}:${host}`,
+        username,
+        credential
+      };
+    }
+    return { urls: url }; // stun: URLs stay as-is
+  });
+
+  return { iceServers };
+}
+
+async function loadConfig() {
+  if (configLoaded) return;
+  try {
+    const res = await fetch("/ice-servers", { cache: "no-store" });
+    if (res.ok) {
+      const data = await res.json();
+      const combined = [];
+      if (Array.isArray(data.stun)) combined.push(...data.stun);
+      if (Array.isArray(data.turn)) combined.push(...data.turn);
+      if (!combined.length && Array.isArray(data.stun_servers)) {
+        combined.push(...data.stun_servers);
+      }
+      if (combined.length) {
+        STUN_SERVERS = combined
+        console.log("using the follow stun server: ", STUN_SERVERS)
+
+      }
+    }
+  } catch (err) {
+    console.warn("Using default STUN servers", err);
+  } finally {
+    configLoaded = true;
+    if (STUN_SERVERS.some(entry => entry.includes("USERNAME:PASSWORD"))) {
+      console.warn(
+        "[TURN] Replace the placeholder TURN URL (USERNAME:PASSWORD@turn.example.com) with your private credentials."
+      );
+    }
+  }
+}
+
+const eyesWrap = document.getElementById('eyes-wrap');
+const ambient = document.getElementById('ambient');
+const sdot = document.getElementById('sdot');
+const dots = document.getElementById('dots');
+const wave = document.getElementById('wave');
+const lids = {
+  lt: document.getElementById('lt'),
+  lb: document.getElementById('lb'),
+  rt: document.getElementById('rt'),
+  rb: document.getElementById('rb')
+};
+const eyes = [
+  document.getElementById('el'),
+  document.getElementById('er')
+];
 const st = document.getElementById('st');
 const det = document.getElementById('det');
 const iCam = document.getElementById('iCam');
@@ -65,14 +275,222 @@ const iIce = document.getElementById('iIce');
 const prev = document.getElementById('preview');
 const remoteAudio = document.getElementById('remoteAudio');
 const camSelect = document.getElementById('camSelect');
+const hud = document.getElementById('hud');
+const btnMuteMic = document.getElementById('btnMuteMic');
+const btnMuteController = document.getElementById('btnMuteController');
+const btnToggleCamera = document.getElementById('btnToggleCamera');
+const btnDisconnect = document.getElementById('btnDisconnect');
+const settingsToggle = document.getElementById('settingsToggle');
+const fsPrompt = document.getElementById('fsPrompt');
+const fsButton = document.getElementById('fsButton');
+const btnClosePanel = document.getElementById('btnClosePanel');
+const btnCloseHud = document.getElementById('btnCloseHud');
+
+const SHAPES = {
+  normal:{w:132,h:112,r:'42px',c:'#00c8d7'},
+  wide:{w:142,h:122,r:'46px',c:'#1ad4f2'},
+  happy:{w:130,h:76,r:'60px 60px 16px 16px',c:'#00e0b0'},
+  think:{w:124,h:100,r:'34px',c:'#6ab0ff'},
+  sleepy:{w:128,h:64,r:'30px',c:'#009fb3'}
+};
+
+let looiMode = 'neutral';
+let targetX = 0;
+let targetY = 0;
+let eyeX = 0;
+let eyeY = 0;
+let blinking = false;
+let blinkTimer = null;
+let driftTimer = null;
+let speakTimer = null;
+const MAX_X = 26;
+const MAX_Y = 14;
+
+function applyEyeShape(key) {
+  const shape = SHAPES[key] || SHAPES.normal;
+  eyes.forEach(eye => {
+    if (!eye) return;
+    eye.style.width = shape.w + 'px';
+    eye.style.height = shape.h + 'px';
+    eye.style.borderRadius = shape.r;
+    eye.style.background = shape.c;
+    eye.style.boxShadow = `0 0 46px ${shape.c}88,0 0 120px ${shape.c}33`;
+  });
+}
+
+function setAmbient(glow) {
+  const tint = glow || 'rgba(0,200,215,.08)';
+  if (ambient) {
+    ambient.style.background = `radial-gradient(ellipse 55% 60% at 50% 50%,${tint} 0%,transparent 70%)`;
+  }
+}
+
+function moveEyes(x, y) {
+  targetX = Math.max(-MAX_X, Math.min(MAX_X, x));
+  targetY = Math.max(-MAX_Y, Math.min(MAX_Y, y));
+}
+
+function animateEyes() {
+  eyeX += (targetX - eyeX) * 0.08;
+  eyeY += (targetY - eyeY) * 0.08;
+  if (eyesWrap) {
+    eyesWrap.style.transform = `translate(${eyeX}px,${eyeY}px)`;
+  }
+  requestAnimationFrame(animateEyes);
+}
+
+function blink(speed = 70) {
+  if (blinking) return;
+  blinking = true;
+  ['lt','rt'].forEach(key => {
+    const lid = lids[key];
+    if (!lid) return;
+    lid.style.transition = `height ${speed}ms linear`;
+    lid.style.height = '105%';
+  });
+  setTimeout(() => {
+    ['lt','rt'].forEach(key => {
+      const lid = lids[key];
+      if (!lid) return;
+      lid.style.transition = `height ${speed * 0.9}ms linear`;
+      lid.style.height = '0%';
+    });
+    setTimeout(() => { blinking = false; }, speed);
+  }, speed * 1.3);
+}
+
+function halfBlink() {
+  ['lt','rt'].forEach(key => {
+    const lid = lids[key];
+    if (!lid) return;
+    lid.style.transition = 'height .45s ease';
+    lid.style.height = '55%';
+  });
+  setTimeout(() => {
+    ['lt','rt'].forEach(key => {
+      const lid = lids[key];
+      if (!lid) return;
+      lid.style.transition = 'height .4s ease';
+      lid.style.height = '0%';
+    });
+  }, 1100);
+}
+
+function scheduleBlink() {
+  clearTimeout(blinkTimer);
+  blinkTimer = setTimeout(() => {
+    if (looiMode !== 'error') {
+      const roll = Math.random();
+      if (roll < 0.14) {
+        blink();
+        setTimeout(() => blink(), 260);
+      } else if (roll < 0.22) {
+        halfBlink();
+      } else {
+        blink();
+      }
+    }
+    scheduleBlink();
+  }, 2200 + Math.random() * 4200);
+}
+
+function idleDrift() {
+  clearTimeout(driftTimer);
+  if (looiMode === 'idle') {
+    moveEyes((Math.random() - 0.5) * MAX_X * 1.6, (Math.random() - 0.5) * MAX_Y * 1.4);
+  }
+  driftTimer = setTimeout(idleDrift, 900 + Math.random() * 2400);
+}
+
+function toggleSpeakMotion(active) {
+  if (speakTimer) {
+    clearTimeout(speakTimer);
+    speakTimer = null;
+  }
+  if (!active) return;
+  const loop = () => {
+    moveEyes((Math.random() - 0.5) * MAX_X * 0.9, (Math.random() - 0.5) * MAX_Y * 0.9);
+    speakTimer = setTimeout(loop, 420 + Math.random() * 560);
+  };
+  loop();
+}
+
+function setMode(mode) {
+  if (looiMode === mode) return;
+  looiMode = mode;
+  if (sdot) sdot.className = '';
+  if (dots) dots.classList.remove('show');
+  if (wave) wave.classList.remove('show');
+
+  switch (mode) {
+    case 'listen':
+      applyEyeShape('wide');
+      setAmbient('rgba(0,200,215,.14)');
+      if (sdot) sdot.classList.add('listen');
+      if (wave) wave.classList.add('show');
+      toggleSpeakMotion(false);
+      moveEyes(0, -3);
+      break;
+    case 'speak':
+      applyEyeShape('normal');
+      setAmbient('rgba(0,200,150,.13)');
+      if (sdot) sdot.classList.add('speak');
+      toggleSpeakMotion(true);
+      break;
+    case 'think':
+      applyEyeShape('think');
+      setAmbient('rgba(92,110,240,.14)');
+      if (dots) dots.classList.add('show');
+      toggleSpeakMotion(false);
+      moveEyes(-8, -6);
+      break;
+    case 'error':
+      applyEyeShape('sleepy');
+      setAmbient('rgba(220,70,70,.14)');
+      toggleSpeakMotion(false);
+      blink();
+      moveEyes(0, 0);
+      break;
+    case 'happy':
+      applyEyeShape('happy');
+      setAmbient('rgba(0,210,150,.14)');
+      toggleSpeakMotion(false);
+      moveEyes(0, -4);
+      break;
+    default:
+      applyEyeShape('normal');
+      setAmbient();
+      toggleSpeakMotion(false);
+      moveEyes(0, 0);
+  }
+}
+
+function mapStateToMode(state, label) {
+  if (state === 'live') return 'speak';
+  if (state === 'err') return 'error';
+  if (label && /INITIALIZING|SIGNAL|PREPARING/i.test(label)) return 'listen';
+  if (label && /WAITING/i.test(label)) return 'think';
+  return 'idle';
+}
 
 function setUI(state, emoji, label, sub) {
-  orb.className = 'orb ' + state;
-  orb.textContent = emoji;
+  setMode(mapStateToMode(state, label));
   st.className = 'status ' + state;
   st.textContent = label;
-  det.textContent = sub;
+  det.textContent = sub || '';
 }
+
+function initEyes() {
+  applyEyeShape('normal');
+  setAmbient();
+  moveEyes(0, 0);
+  setMode('idle');
+  scheduleBlink();
+  idleDrift();
+  requestAnimationFrame(animateEyes);
+}
+
+initEyes();
 
 async function updateCameraList() {
   try {
@@ -89,94 +507,493 @@ async function updateCameraList() {
   } catch (e) { console.error(e); }
 }
 
-async function getMedia() {
-  if (stream) stream.getTracks().forEach(track => track.stop());
-  const constraints = { 
-    video: currentDeviceId ? { deviceId: { exact: currentDeviceId } } : { facingMode: 'environment' }, 
-    audio: { echoCancellation: true, noiseSuppression: true } 
-  };
-  try {
-    stream = await navigator.mediaDevices.getUserMedia(constraints);
-    await updateCameraList(); 
-    iCam.textContent = 'ACTIVE ✓';
-    iMic.textContent = 'BIDIRECTIONAL ✓';
-    prev.srcObject = stream;
+function ensureLocalStream() {
+  if (!localStream) {
+    localStream = new MediaStream();
+  }
+  return localStream;
+}
+
+function clearLocalStreamIfEmpty() {
+  if (localStream && localStream.getTracks().length === 0) {
+    localStream = null;
+  }
+}
+
+function annotateDetail(message) {
+  det.textContent = message;
+}
+
+function setHudVisible(open) {
+  settingsOpen = open;
+  if (!hud) return;
+  hud.classList.toggle('visible', open);
+  if (settingsToggle) settingsToggle.setAttribute('aria-expanded', String(open));
+}
+
+async function requestFullscreen(element) {
+  const target = element || document.documentElement;
+  if (!target) return Promise.resolve();
+  if (document.fullscreenElement) return Promise.resolve();
+  const method = target.requestFullscreen || target.webkitRequestFullscreen || target.msRequestFullscreen;
+  if (method) {
+    try {
+      const result = method.call(target);
+      if (result && result.catch) {
+        await result;
+      }
+    } catch (err) {
+      console.warn('Fullscreen request failed', err);
+    }
+  }
+}
+
+async function bootstrapApp() {
+  if (appBootstrapped) return;
+  appBootstrapped = true;
+  if (fsPrompt) fsPrompt.classList.add('hidden');
+  await loadConfig();
+  connectSignal();
+  start();
+}
+
+function updatePreview() {
+  if (carCameraEnabled && localVideoTrack && localVideoTrack.readyState === 'live') {
+    const previewStream = new MediaStream([localVideoTrack]);
+    prev.srcObject = previewStream;
     prev.style.display = 'block';
-    return true;
+  } else {
+    prev.srcObject = null;
+    prev.style.display = 'none';
+  }
+}
+
+function updateMicUI() {
+  if (carMicEnabled && localAudioTrack && localAudioTrack.readyState === 'live') {
+    iMic.textContent = 'BIDIRECTIONAL ✓';
+  } else if (carMicEnabled) {
+    iMic.textContent = 'READY (INACTIVE)';
+  } else {
+    iMic.textContent = 'MUTED ✖';
+  }
+  if (btnMuteMic) {
+    btnMuteMic.classList.toggle('off', !carMicEnabled);
+    btnMuteMic.textContent = carMicEnabled ? 'MUTE MIC' : 'MIC OFF';
+  }
+}
+
+function updateCameraUI() {
+  if (carCameraEnabled && localVideoTrack && localVideoTrack.readyState === 'live') {
+    iCam.textContent = 'ACTIVE ✓';
+  } else if (carCameraEnabled) {
+    iCam.textContent = 'READY (INACTIVE)';
+  } else {
+    iCam.textContent = 'STOPPED ✖';
+  }
+  if (btnToggleCamera) {
+    btnToggleCamera.classList.toggle('off', !carCameraEnabled);
+    btnToggleCamera.textContent = carCameraEnabled ? 'STOP CAMERA' : 'CAMERA OFF';
+  }
+  updatePreview();
+}
+
+function updateControllerAudioUI() {
+  remoteAudio.muted = !controllerAudioEnabled;
+  if (btnMuteController) {
+    btnMuteController.classList.toggle('off', !controllerAudioEnabled);
+    btnMuteController.textContent = controllerAudioEnabled ? 'MUTE CTRL' : 'CTRL MUTED';
+  }
+  if (controllerAudioEnabled && remoteAudio.srcObject) {
+    const playPromise = remoteAudio.play();
+    if (playPromise && playPromise.catch) {
+      playPromise.catch(err => console.warn('[MEDIA] controller audio play blocked', err));
+    }
+  }
+}
+
+function disableAudioTrack() {
+  micSenders.forEach(sender => {
+    try { sender.replaceTrack(null); } catch (err) { console.warn('Audio replaceTrack(null) failed', err); }
+  });
+  if (localAudioTrack) {
+    try { localAudioTrack.stop(); } catch (_) {}
+    if (localStream) localStream.removeTrack(localAudioTrack);
+  }
+  localAudioTrack = null;
+  clearLocalStreamIfEmpty();
+  updateMicUI();
+}
+
+function disableVideoTrack() {
+  camSenders.forEach(sender => {
+    try { sender.replaceTrack(null); } catch (err) { console.warn('Video replaceTrack(null) failed', err); }
+  });
+  if (localVideoTrack) {
+    try { localVideoTrack.stop(); } catch (_) {}
+    if (localStream) localStream.removeTrack(localVideoTrack);
+  }
+  localVideoTrack = null;
+  activeCameraDeviceId = null;
+  clearLocalStreamIfEmpty();
+  updateCameraUI();
+}
+
+function isTrackFromCurrentCamera(track) {
+  if (!track || track.readyState !== 'live') return false;
+  const settings = typeof track.getSettings === 'function' ? track.getSettings() : {};
+  if (!currentDeviceId) return true;
+  if (settings && settings.deviceId) return settings.deviceId === currentDeviceId;
+  return activeCameraDeviceId ? activeCameraDeviceId === currentDeviceId : false;
+}
+
+async function ensureAudioTrack() {
+  if (!carMicEnabled) return null;
+  if (localAudioTrack && localAudioTrack.readyState === 'live') {
+    return localAudioTrack;
+  }
+  try {
+    const media = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+    const [track] = media.getAudioTracks();
+    if (!track) {
+      return null;
+    }
+    if (localAudioTrack && localAudioTrack !== track) {
+      try { localAudioTrack.stop(); } catch (_) {}
+      if (localStream) localStream.removeTrack(localAudioTrack);
+    }
+    localAudioTrack = track;
+    ensureLocalStream().addTrack(track);
+    localAudioTrack.addEventListener('ended', () => {
+      if (carMicEnabled) {
+        carMicEnabled = false;
+        disableAudioTrack();
+        annotateDetail('Mic channel ended');
+      }
+    });
+    updateMicUI();
+    return localAudioTrack;
   } catch (err) {
-    setUI('err','❌','NO MEDIA','Check permissions');
-    return false;
+    console.warn('Mic capture failed', err);
+    carMicEnabled = false;
+    updateMicUI();
+    annotateDetail('Mic permission denied');
+    return null;
+  }
+}
+
+async function ensureVideoTrack() {
+  if (!carCameraEnabled) return null;
+  if (localVideoTrack && isTrackFromCurrentCamera(localVideoTrack) && localVideoTrack.readyState === 'live' && (!currentDeviceId || currentDeviceId === activeCameraDeviceId)) {
+    return localVideoTrack;
+  }
+  if (localVideoTrack && localVideoTrack.readyState === 'live' && (!isTrackFromCurrentCamera(localVideoTrack) || (currentDeviceId && currentDeviceId !== activeCameraDeviceId))) {
+    try { localVideoTrack.stop(); } catch (_) {}
+    if (localStream) localStream.removeTrack(localVideoTrack);
+    localVideoTrack = null;
+  }
+  const constraints = currentDeviceId ? { deviceId: { exact: currentDeviceId } } : { facingMode: 'environment' };
+  try {
+    const media = await navigator.mediaDevices.getUserMedia({ video: constraints });
+    const [track] = media.getVideoTracks();
+    if (!track) {
+      return null;
+    }
+    if (localVideoTrack && localVideoTrack !== track) {
+      try { localVideoTrack.stop(); } catch (_) {}
+      if (localStream) localStream.removeTrack(localVideoTrack);
+    }
+    localVideoTrack = track;
+    ensureLocalStream().addTrack(track);
+    const settings = typeof track.getSettings === 'function' ? track.getSettings() : {};
+    if (!currentDeviceId && settings && settings.deviceId) {
+      currentDeviceId = settings.deviceId;
+    }
+    activeCameraDeviceId = currentDeviceId || (settings && settings.deviceId) || activeCameraDeviceId;
+    await updateCameraList();
+    localVideoTrack.addEventListener('ended', () => {
+      if (carCameraEnabled) {
+        carCameraEnabled = false;
+        disableVideoTrack();
+        annotateDetail('Camera feed ended');
+      }
+    });
+    updateCameraUI();
+    return localVideoTrack;
+  } catch (err) {
+    console.warn('Camera capture failed', err);
+    carCameraEnabled = false;
+    updateCameraUI();
+    annotateDetail('Camera permission denied');
+    return null;
+  }
+}
+
+async function refreshLocalMedia() {
+  if (carMicEnabled) {
+    const track = await ensureAudioTrack();
+    if (track && micSenders.length) {
+      micSenders.forEach(sender => {
+        try { sender.replaceTrack(track); } catch (err) { console.warn('Audio replaceTrack failed', err); }
+      });
+    }
+  } else {
+    disableAudioTrack();
+  }
+
+  if (carCameraEnabled) {
+    const track = await ensureVideoTrack();
+    if (track && camSenders.length) {
+      camSenders.forEach(sender => {
+        try { sender.replaceTrack(track); } catch (err) { console.warn('Video replaceTrack failed', err); }
+      });
+    }
+  } else {
+    disableVideoTrack();
+  }
+
+  updateControllerAudioUI();
+}
+
+function cleanupPeerConnection() {
+  if (pc) {
+    try { pc.close(); } catch (_) {}
+  }
+  pc = null;
+  micSenders = [];
+  camSenders = [];
+  micTransceiver = null;
+  camTransceiver = null;
+}
+
+function forceDisconnect() {
+  manualDisconnect = true;
+  pendingRestart = false;
+  if (signalHeartbeat) {
+    clearInterval(signalHeartbeat);
+    signalHeartbeat = null;
+  }
+  if (signalReconnectTimer) {
+    clearTimeout(signalReconnectTimer);
+    signalReconnectTimer = null;
+  }
+  if (sigSocket) {
+    try { sigSocket.close(); } catch (_) {}
+  }
+  sigSocket = null;
+  signalReady = false;
+  pendingSignalMessages = [];
+  cleanupPeerConnection();
+  disableAudioTrack();
+  disableVideoTrack();
+  setHudVisible(false);
+  annotateDetail('Connection closed manually');
+  setUI('waiting','📡','DISCONNECTED','Press reset to reconnect');
+}
+
+function connectSignal() {
+  if (manualDisconnect) return;
+  if (sigSocket && (sigSocket.readyState === WebSocket.OPEN || sigSocket.readyState === WebSocket.CONNECTING)) {
+    return;
+  }
+  if (signalReconnectTimer) {
+    clearTimeout(signalReconnectTimer);
+    signalReconnectTimer = null;
+  }
+
+  sigSocket = new WebSocket(SIG_URL);
+
+  sigSocket.addEventListener('open', () => {
+    signalReady = true;
+    setUI('waiting','📡','SIGNAL OK','Preparing media');
+    if (signalHeartbeat) clearInterval(signalHeartbeat);
+    signalHeartbeat = setInterval(() => sigSend({ type: 'heartbeat' }), SIGNAL_HEARTBEAT_MS);
+
+    const queued = [...pendingSignalMessages];
+    pendingSignalMessages = [];
+    queued.forEach(sigSend);
+
+    if (pendingRestart) {
+      pendingRestart = false;
+      start();
+    }
+  });
+
+  sigSocket.addEventListener('message', async (event) => {
+    try {
+      const payload = JSON.parse(event.data);
+      await handleSignalMessage(payload);
+    } catch (err) {
+      console.error('Signal parse error', err);
+    }
+  });
+
+  sigSocket.addEventListener('close', () => {
+    signalReady = false;
+    if (signalHeartbeat) {
+      clearInterval(signalHeartbeat);
+      signalHeartbeat = null;
+    }
+    if (manualDisconnect) {
+      setUI('waiting','📡','DISCONNECTED','Press reset to reconnect');
+      return;
+    }
+    setUI('waiting','📡','SIGNAL LOST','Reconnecting…');
+    scheduleSignalReconnect();
+  });
+
+  sigSocket.addEventListener('error', (err) => {
+    console.warn('Signal error', err);
+    sigSocket.close();
+  });
+}
+
+function scheduleSignalReconnect() {
+  if (manualDisconnect) return;
+  if (signalReconnectTimer) return;
+  signalReconnectTimer = setTimeout(() => {
+    signalReconnectTimer = null;
+    connectSignal();
+  }, SIGNAL_RECONNECT_MS);
+}
+
+function sigSend(message) {
+  if (signalReady && sigSocket && sigSocket.readyState === WebSocket.OPEN) {
+    console.log("[SIG] →", message.type || "unknown", message);
+    sigSocket.send(JSON.stringify(message));
+  } else {
+    console.log("[SIG] queue", message.type || "unknown", message);
+    pendingSignalMessages.push(message);
+  }
+}
+
+async function handleSignalMessage(payload) {
+  const type = (payload.type || '').toLowerCase();
+  console.log("[SIG] ←", type, payload);
+  if (type === 'ready') {
+    setUI('waiting','📡','WAITING…','Controller can join');
+    return;
+  }
+  if (type === 'hello') {
+  if (pc && pc.localDescription && pc.localDescription.type === 'offer') {
+    // Controller just joined — re-send our existing offer
+    console.log('[SIG] controller joined, re-sending offer');
+    sigSend({ type: 'offer', offer: pc.localDescription });
+  } else {
+    // No offer yet, start fresh
+    start();
+  }
+  return;
+}
+  if (!pc) return;
+
+  if (type === 'answer' && payload.answer) {
+    try {
+      await pc.setRemoteDescription(new RTCSessionDescription(payload.answer));
+    } catch (err) {
+      console.error('apply answer failed', err);
+    }
+    return;
+  }
+
+  if (type === 'ice' && payload.candidate) {
+    try {
+      await pc.addIceCandidate(new RTCIceCandidate(payload.candidate));
+    } catch (err) {
+      console.error('add ice failed', err);
+    }
+    return;
+  }
+
+  if (type === 'peer_left') {
+    setUI('waiting','📡','WAITING…','Controller disconnected');
+    cleanupPeerConnection();
+    pendingRestart = false;
+    start();
+    return;
+  }
+
+  if (type === 'error') {
+    setUI('err','⚠️','SIGNAL ERR', payload.reason || 'Unknown');
   }
 }
 
 async function start() {
-  clearInterval(pollTimer);
+  manualDisconnect = false;
   setUI('waiting','📡','INITIALIZING…','');
-  if (!await getMedia()) return;
+  await loadConfig();
+  await refreshLocalMedia();
 
-  await fetch('/sig/reset', { method:'POST' }).catch(()=>{});
-  knownCtrlIce = 0;
+  if (!signalReady) {
+    pendingRestart = true;
+    det.textContent = 'Waiting for signaling link…';
+    connectSignal();
+    return;
+  }
 
-  if (pc) { try { pc.close(); } catch(_){} }
-  pc = new RTCPeerConnection(PC_CONFIG);
+  if (pc) cleanupPeerConnection();
+  console.log(buildRTCConfig())
+  pc = new RTCPeerConnection(buildRTCConfig());
+  micSenders = [];
+  camSenders = [];
+  micTransceiver = pc.addTransceiver('audio', { direction: 'sendrecv' });
+  camTransceiver = pc.addTransceiver('video', { direction: 'sendonly' });
+  micSenders.push(micTransceiver.sender);
+  camSenders.push(camTransceiver.sender);
 
-  // Send local camera and mic to controller
-  stream.getTracks().forEach(t => pc.addTrack(t, stream));
+  if (carMicEnabled && localAudioTrack) {
+    micSenders.forEach(sender => {
+      try { sender.replaceTrack(localAudioTrack); } catch (err) { console.warn('attach audio failed', err); }
+    });
+  } else {
+    disableAudioTrack();
+  }
 
-  // Receive controller's mic and play it
+  if (carCameraEnabled && localVideoTrack) {
+    camSenders.forEach(sender => {
+      try { sender.replaceTrack(localVideoTrack); } catch (err) { console.warn('attach video failed', err); }
+    });
+  } else {
+    disableVideoTrack();
+  }
+
   pc.ontrack = (event) => {
-    if (event.streams && event.streams[0]) {
-      remoteAudio.srcObject = event.streams[0];
-      console.log("Receiving remote audio track");
-    }
-  };
+  const track = event.track;
+  const stream = event.streams?.[0] || new MediaStream([track]);
+  console.log('[CAR] ontrack:', track.kind, 'readyState:', track.readyState, 'streams:', event.streams.length);
+  if (track.kind === 'audio') {
+    remoteAudio.srcObject = stream;
+    updateControllerAudioUI();
+    remoteAudio.play().catch(err => console.warn('[CAR] audio play blocked:', err));
+  }
+};
 
-  pc.onicecandidate = async e => {
+  pc.onicecandidate = (e) => {
     if (!e.candidate) return;
-    await fetch('/sig/ice/car', {
-      method: 'POST',
-      headers: { 'Content-Type':'application/json' },
-      body: JSON.stringify(e.candidate)
-    }).catch(()=>{});
+    console.log("[ICE] local candidate", e.candidate.type || e.candidate.candidate);
+    sigSend({ type: 'ice', candidate: e.candidate });
   };
 
   pc.oniceconnectionstatechange = () => {
     iIce.textContent = pc.iceConnectionState.toUpperCase();
+    console.log("[ICE] state", pc.iceConnectionState);
     if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
       setUI('live','🔴','LIVE','Full Duplex Audio/Video Active');
+    } else if (pc.iceConnectionState === 'failed') {
+      setUI('err','⚠️','ICE FAILED','Restarting…');
+      pendingRestart = true;
+      cleanupPeerConnection();
+      start();
     }
   };
 
   const offer = await pc.createOffer();
+  console.log("[SDP] local offer created");
   await pc.setLocalDescription(offer);
-  await fetch('/sig/offer', {
-    method: 'POST',
-    headers: { 'Content-Type':'application/json' },
-    body: JSON.stringify(pc.localDescription)
-  });
+  sigSend({ type: 'offer', offer: pc.localDescription });
 
+  updateMicUI();
+  updateCameraUI();
   setUI('waiting','📡','WAITING…','Ready for controller link');
-
-  pollTimer = setInterval(async () => {
-    if (pc.signalingState !== 'stable') {
-      const r = await fetch('/sig/answer').catch(()=>null);
-      if (r && r.ok) {
-        const d = await r.json();
-        if (d.answer) {
-          await pc.setRemoteDescription(new RTCSessionDescription(d.answer));
-        }
-      }
-    }
-    const r2 = await fetch('/sig/ice/ctrl').catch(()=>null);
-    if (r2 && r2.ok) {
-      const d2 = await r2.json();
-      const all = d2.ice || [];
-      for (let i = knownCtrlIce; i < all.length; i++) {
-        try { await pc.addIceCandidate(new RTCIceCandidate(all[i])); } catch(_) {}
-      }
-      knownCtrlIce = all.length;
-    }
-  }, 1500);
 }
 
 camSelect.addEventListener('change', (e) => {
@@ -185,7 +1002,81 @@ camSelect.addEventListener('change', (e) => {
 });
 
 document.getElementById('btnReset').addEventListener('click', start);
-window.addEventListener('load', start);
+
+setHudVisible(false);
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    if (settingsOpen) setHudVisible(false);
+  }
+});
+if (settingsToggle) {
+  settingsToggle.addEventListener('click', () => {
+    setHudVisible(!settingsOpen);
+  });
+}
+if (btnCloseHud) {
+  btnCloseHud.addEventListener('click', () => setHudVisible(false));
+}
+if (btnClosePanel) {
+  btnClosePanel.addEventListener('click', () => setHudVisible(false));
+}
+if (fsButton) {
+  fsButton.addEventListener('click', async () => {
+    await requestFullscreen(document.documentElement);
+    if (fsPrompt) fsPrompt.classList.add('hidden');
+    await bootstrapApp();
+  });
+} else {
+  window.addEventListener('load', bootstrapApp);
+}
+if (btnMuteMic) {
+  btnMuteMic.addEventListener('click', async () => {
+    carMicEnabled = !carMicEnabled;
+    console.log('[MEDIA] car mic', carMicEnabled ? 'enabled' : 'muted');
+    await refreshLocalMedia();
+    annotateDetail(carMicEnabled ? 'Mic streaming resumed' : 'Mic muted locally');
+  });
+}
+
+if (btnMuteController) {
+  btnMuteController.addEventListener('click', () => {
+    controllerAudioEnabled = !controllerAudioEnabled;
+    console.log('[MEDIA] controller audio', controllerAudioEnabled ? 'audible' : 'muted');
+    updateControllerAudioUI();
+    annotateDetail(controllerAudioEnabled ? 'Controller audio audible' : 'Controller audio muted');
+  });
+}
+
+if (btnToggleCamera) {
+  btnToggleCamera.addEventListener('click', async () => {
+    carCameraEnabled = !carCameraEnabled;
+    console.log('[MEDIA] camera', carCameraEnabled ? 'enabled' : 'stopped');
+    await refreshLocalMedia();
+    annotateDetail(carCameraEnabled ? 'Camera streaming resumed' : 'Camera stopped');
+  });
+}
+
+if (btnDisconnect) {
+  btnDisconnect.addEventListener('click', () => {
+    console.log('[MEDIA] manual disconnect triggered');
+    forceDisconnect();
+  });
+}
+
+updateControllerAudioUI();
+updateMicUI();
+updateCameraUI();
+window.addEventListener('load', () => {
+  if (fsPrompt) {
+    fsPrompt.classList.remove('hidden');
+    if (fsButton) {
+      try { fsButton.focus(); } catch (_) {}
+    }
+  } else {
+    bootstrapApp();
+  }
+});
 </script>
 </body>
 </html>
