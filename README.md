@@ -1,111 +1,177 @@
-# Remote Car Control Platform
+# Remote Car Telepresence Platform
 
-FastAPI backend and lightweight web client for driving an ESP32-powered rover with sub-second latency from any browser.
+This repository fuses three pieces into a single remote-driving stack:
 
-- **Low-latency control path**: Browser → FastAPI → ESP32 (WebSocket relay).
-- **Signaling path**: Browser ↔ Browser WebRTC room for live video/control sync.
-- **Stateless browsers**: clients auto-discover each other via `/ws?role=car|ctrl`.
+1. **FastAPI backend (`fastApi/`)** – relays motion commands to the rover, exposes health/state APIs, and serves the browser UIs.
+2. **Browser UIs (`fastApi/public/`)** – WebRTC driven car HUD (`car.html`) and controller dashboard (`controller.html`) with an index launcher.
+3. **ESP32 firmware (`src/main.cpp`)** – keeps a persistent WebSocket link to the backend and translates one-character commands into motor control.
 
----
-
-## 1. Project Layout
-
-- `fastApi/app.py` – FastAPI application exposing control endpoints, WebSocket bridges, and static asset hosting.
-- `fastApi/public/` – HTML/CSS/JS front-ends (`index.html` controller, `car.html` rover HUD, `controller.html` legacy view).
-- `src/`, `include/`, `lib/` – PlatformIO firmware for the ESP32 (motor drivers, sensors).
-- `platformio.ini` – PlatformIO environment configuration for compiling and flashing the ESP32 firmware.
-- `test/` – Hardware/software integration tests (expand with simulation stubs as the project grows).
+Together they let a driver connect from any browser, see the rover video stream, and steer an ESP32-based car with sub-second latency.
 
 ---
 
-## 2. Quick Start (Local Dev)
+## Repository Layout
 
-### Backend
+| Path | Purpose |
+| --- | --- |
+| `fastApi/app.py` | FastAPI application, WebSocket bridges, REST control endpoints, WebRTC signaling, static file host. |
+| `fastApi/public/` | Static HTML/CSS/JS assets for the landing page, car UI, and controller UI. |
+| `fastApi/requirements.txt` | Minimal Python dependencies (FastAPI, Uvicorn, websockets). |
+| `src/main.cpp` | Arduino/PlatformIO firmware for the ESP32 rover. |
+| `platformio.ini` | PlatformIO environment targeting `esp32doit-devkit-v1` with WebSocketsClient dependency. |
+| `include/`, `lib/`, `test/` | Standard PlatformIO scaffolding for headers, external libs, and tests. |
+
+---
+
+## Prerequisites
+
+- Python 3.10+ with `pip` (for the FastAPI backend).
+- PlatformIO Core (`pip install platformio`) or the VS Code PlatformIO extension for firmware builds.
+- ESP32 DevKit (pins expected in `src/main.cpp`) wired to your motor driver.
+- Cameras/microphones on both rover and controller machines if you intend to use WebRTC video/audio.
+
+---
+
+## 1. Backend Setup (FastAPI)
+
 ```bash
 cd fastApi
-python3 -m venv .venv
-source .venv/bin/activate  # Windows: .venv\\Scripts\\activate
-pip install -r requirements.txt  # create from manual list below if missing
-# or: pip install fastapi uvicorn[standard] websockets
+python -m venv .venv
+source .venv/bin/activate          # Windows: .\.venv\Scripts\activate
+pip install -r requirements.txt
+
+# Optional: provide STUN/TURN servers for WebRTC (comma-separated)
+export STUN_SERVERS="stun:stun.l.google.com:19302,turn:USER:PASS@turn.example.com:3478?transport=udp"
 
 uvicorn app:app --host 0.0.0.0 --port 5000 --reload
 ```
 
-### Controller UI
-- Visit `http://localhost:5000/` and choose **Drive** (or go directly to `http://localhost:5000/controller`) for the controller dashboard.
-- The rover client should open `http://localhost:5000/` → **Car Node** (direct: `http://localhost:5000/car`).
-- ESP32 firmware connects via WebSocket to `ws://<server-ip>:5000/esp` and sends 5 s heartbeat pings.
+Key services exposed once Uvicorn is running:
+
+| Endpoint | Type | Description |
+| --- | --- | --- |
+| `/controller` | HTML | Driver dashboard (WebRTC + control WebSocket). |
+| `/car` | HTML | Rover HUD, local media capture, connects as WebRTC “car” peer. |
+| `/ws?role=car|ctrl` | WebSocket | WebRTC signaling bridge between the two browsers. |
+| `/ctrl` | WebSocket | High-rate command/telemetry channel between controller UI and server. |
+| `/esp` | WebSocket | Persistent ESP32 socket (one-character commands and keepalives). |
+| `/move`, `/rotate`, `/speed` | POST | Legacy REST fallbacks for motion / rotation / PWM control. |
+| `/config`, `/ice-servers` | GET | Current STUN/TURN list for the browser clients. |
+| `/health` | GET | Aggregate status (ESP, controller peer, car peer). |
+
+Uvicorn **must** run with a single worker (`--workers 1`) so the ESP32 WebSocket lives in one event loop.
 
 ---
 
-## 3. Core Endpoints
+## 2. Browser Roles
 
-| Endpoint | Method | Purpose | Notes |
-| --- | --- | --- | --- |
-| `/ctrl` | WebSocket | Bidirectional controller command channel | JSON `drive/stop/speed/heartbeat` messages with `ack` + `status` replies |
-| `/move` | POST (JSON `{ "dir": "F" }`) | Relay directional commands to ESP32 | Legacy fallback; rejects if ESP offline |
-| `/rotate` | POST (JSON `{ "dir": "L", "deg": 60 }`) | Timed rotation (start/stop with calibrated delay) | Applies a dedicated rotation speed, returns whether stop succeeded |
-| `/speed` | POST (JSON `{ "val": 180 }`) | Adjust PWM speed by mapping to single-digit command | Clamps range, surfaces offline errors |
-| `/esp` | WebSocket | Persistent ESP32 connection | Maintains connection status + last seen |
-| `/ws?role=car|ctrl` | WebSocket | WebRTC signaling bridge between car and controller browsers | Rejects duplicate role connections; auto notifies when both peers connected |
-| `/health` | GET | Report ESP32 status & connected signaling peers | Includes connected status, last-seen age |
+1. **Car device (`/car`)**
+   - Prompts for fullscreen and media permissions.
+   - Publishes local camera/microphone, receives driver audio, mirrors status from FastAPI.
+   - Toggle settings via the gear icon; HUD stays scrollable with controls for camera, mic, controller audio, etc.
 
-### Controller WebSocket Messages
+2. **Controller (`/controller`)**
+   - Joystick-style UI for forward/backward and steering, speed slider, rotation buttons, and mic/video toggles.
+   - Communicates with the backend over `/ctrl` WebSocket for low-latency motion.
+   - Negotiates WebRTC with the car peer for the live feed.
 
-- **Outbound (controller → server)**  
-  - `{"type":"hello","client":"controller","version":"2.0"}` for handshake metadata.  
-  - `{"type":"drive","dir":"F"}` to begin continuous motion; `{"type":"stop"}` to halt.  
-  - `{"type":"speed","value":180}` to adjust PWM.  
-  - `{"type":"heartbeat"}` every ~2 s to keep the session alive.
-- **Inbound (server → controller)**  
-  - `{"type":"ack","cmd":"drive","status":"ok","dir":"F"}` confirms command delivery and provides latency targets.  
-  - `{"type":"status","esp":{...},"car":{...},"controller":{...}}` broadcasts session health.  
-  - `{"type":"error","reason":"esp_offline"}` communicates faults.
+Launch sequence:
 
-HTTP endpoints (`/move`, `/speed`, `/rotate`) remain as fallbacks for legacy clients and automation, but the UI now prefers `/ctrl`.
+1. Start the FastAPI server.
+2. On the rover host (or attached display), open `http://<server-ip>:5000/car`.
+3. On the driver machine, open `http://<server-ip>:5000/controller`.
+4. Once both peers connect, the signaling bridge notifies them to exchange WebRTC offers/answers automatically.
 
-### WebRTC Signaling Configuration
-
-- By default both `car.html` and `controller.html` use Google’s public STUN server (`stun:stun.l.google.com:19302`).
-- Override the list with a comma-separated `STUN_SERVERS` environment variable before launching FastAPI, e.g.  
-  `STUN_SERVERS="stun:global.stun.twilio.com:3478,turn:turn.example.com:3478?transport=udp" uvicorn app:app ...`
-- The front-ends fetch `/config` on load to pull the current list; add TURN URLs (with credentials in the URL) when deploying across difficult NATs.
+If you only need the static landing page, use `http://<server-ip>:5000/`.
 
 ---
 
-## 4. Deployment Notes
+## 3. ESP32 Firmware (PlatformIO)
 
-1. **Container / VM**: Run `uvicorn app:app --host 0.0.0.0 --port ${PORT:-5000} --workers 1`. Keep workers at `1` to avoid WebSocket session pinning issues with the ESP32.
-2. **TLS / Reverse Proxy**: Terminate TLS in front of Uvicorn (nginx, Caddy, Traefik). Ensure WebSockets are forwarded.
-3. **Static assets**: Served directly from `fastApi/public`. Amend `PUBLIC_DIR` in `app.py` only if you move assets.
-4. **Environment**: Set `PORT` environment variable if 5000 is unavailable.
-5. **Observability**: Logs report ESP32 connection status; consider adding Prometheus or structured logging before production.
+Edit the Wi-Fi credentials and backend address at the top of `src/main.cpp`:
 
----
-
-## 5. Firmware Workflow (PlatformIO)
-
-```bash
-pio run          # compile firmware
-pio run -t upload  # flash connected ESP32
-pio device monitor  # open serial monitor for debugging
+```cpp
+const char* WIFI_SSID     = "your-ssid";
+const char* WIFI_PASSWORD = "super-secret";
+const char* FLASK_HOST    = "192.168.1.42"; // IP of the FastAPI server
+const uint16_t FLASK_PORT = 5000;
+const char* FLASK_PATH    = "/esp";
 ```
 
-Tune motor timings in firmware, but keep `/rotate` duration map synchronized. Update both sides if you recalibrate.
+> The comments still reference “Flask”; the actual backend is FastAPI but the WebSocket path stays `/esp`.
+
+Build and upload:
+
+```bash
+pio run                # compile
+pio run -t upload      # flash (board must be connected over USB)
+pio device monitor     # open serial monitor @115200 baud
+```
+
+Firmware behavior:
+
+- Connects to Wi-Fi, then to `ws://FLASK_HOST:FLASK_PORT/esp`.
+- Receives single-character commands: `F`, `B`, `L`, `R`, `S`, and digits `0`–`9` for PWM speed presets.
+- Sends `"ping"` every 5 seconds (handled in `app.py` to keep last-seen timestamps).
+- Stops motors automatically on Wi-Fi/WebSocket disconnect.
+
+Motor pins and PWM channels are defined near the top of the file; adjust them to match your motor driver wiring.
 
 ---
 
-## 6. Future Enhancements
+## 4. WebRTC / ICE Configuration
 
-- Add auth or pairing tokens before exposing to the public internet.
-- Persist rotation calibration on the server using a config file or database.
-- Integrate WebRTC video feed from the rover camera directly in `car.html`.
-- Provide automated tests covering command routing and WebSocket failure recovery.
+- Default STUN/TURN list ships inside `app.py`.  
+- Override it by exporting `STUN_SERVERS` before starting Uvicorn. Use comma-separated URLs; include credentials inline for TURN (e.g. `turn:username:password@turn.yourdomain.com:3478?transport=udp`).
+- The browser UIs call `/config` on load, so updates take effect without rebuilding the front-end.
+- For tougher NAT scenarios you can extend `app.py` to load from a JSON file (see `_load_json_ice_servers` helper).
+
+---
+
+## 5. Command & Telemetry Flow
+
+```
+Controller UI  →  /ctrl WebSocket  →  FastAPI  →  ESP32 /esp WebSocket  →  Motors
+                                   ↘                        ↗
+                          status/ack JSON         one-char drive commands
+Car UI ↔ Controller UI (browser↔browser media via WebRTC, signaled through /ws)
+```
+
+- The controller WebSocket sends `drive`, `stop`, `speed`, and `heartbeat` messages.
+- FastAPI keeps the ESP32 speed digit in sync (`DEFAULT_SPEED_DIGIT`, `ROTATION_SPEED_DIGIT`) so rotations temporarily switch to a calibrated PWM and then restore the previous speed.
+- `/rotate` exposes pre-calibrated angles (15°, 45°, 60°, 90°) by sleeping the event loop for predefined durations before issuing a stop command.
+- `/health` aggregates ESP connection state, controller heartbeat age, car peer presence, and signaling peers for quick diagnostics.
+
+---
+
+## 6. Running the Full Stack Locally
+
+1. Flash the ESP32 firmware and ensure it can reach your development machine’s IP.
+2. Start FastAPI on that machine (`uvicorn app:app --host 0.0.0.0 --port 5000 --reload`).
+3. On the rover, open `/car`; on the driver device, open `/controller`.
+4. Confirm the ESP32 logs show “Connected to ws://<host>:5000/esp” and the FastAPI console prints connection information.
+5. Use the controller UI to drive; the car HUD should display live status and video preview.
 
 ---
 
 ## 7. Troubleshooting
 
-- **ESP32 not connected**: Check serial console; ensure it can reach the server IP/port; verify CORS/WS not blocked.
-- **Commands lagging**: Confirm both network hops are <10 ms; inspect `uvicorn` logs for backpressure; ensure single worker.
-- **WebRTC peers not pairing**: Inspect browser console for ICE server errors; ensure both clients reach `/ws` endpoint.
+| Symptom | Check |
+| --- | --- |
+| ESP32 never connects | Verify Wi-Fi credentials/IP in `main.cpp` and ensure port 5000 is reachable. |
+| Commands lag | Confirm only one Uvicorn worker, watch for warnings about ESP offline, inspect network latency. |
+| WebRTC handshake fails | Open browser dev tools, inspect ICE candidates, make sure both clients can reach `/ws`. Provide TURN URLs if devices are on different NATs. |
+| Car HUD buttons unresponsive | Make sure `/ctrl` WebSocket is connected (indicator in controller UI) and ESP32 is online. |
+
+---
+
+## 8. Next Steps
+
+- Harden the signaling channel with authentication/pairing tokens before deploying publicly.
+- Store rotation calibration and drivetrain parameters in a config file or database instead of in-code dictionaries.
+- Replace hard-coded STUN/TURN defaults with environment-provided JSON in production.
+- Extend the PlatformIO project with sensor feedback (IMU, encoders) and surface telemetry in the controller UI.
+
+---
+
+Made with FastAPI, WebRTC, and a lot of glow effects. Happy driving! 🛻💡

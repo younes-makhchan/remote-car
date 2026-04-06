@@ -974,8 +974,8 @@ function teardownPeer() {
     sendStop(true);
   });
 
-  document.getElementById('turn-L').onclick = () => triggerRotation('L');
-  document.getElementById('turn-R').onclick = () => triggerRotation('R');
+  document.getElementById('turn-L').onclick = () => triggerRotation('R');
+  document.getElementById('turn-R').onclick = () => triggerRotation('L');
 
   const keyBindings = { arrowup: 'F', w: 'F', arrowdown: 'B', s: 'B', ' ': 'S' };
   document.addEventListener('keydown', (e) => {
