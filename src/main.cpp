@@ -33,10 +33,9 @@
 const char* WIFI_SSID     = "iphone";
 const char* WIFI_PASSWORD = "123456789";
 
-// IP or domain of the machine running FastAPI / reverse proxy.
-// When you move to EC2, just change this to your EC2 public IP.
-const char* FLASK_HOST    = "192.168.137.1";
-const uint16_t FLASK_PORT = 5000;
+// Public domain exposed by your reverse proxy / TLS terminator.
+const char* FLASK_HOST    = "www.example.com";
+const uint16_t FLASK_PORT = 443;
 const char*  FLASK_PATH   = "/esp";    // matches @app.websocket("/esp") in app.py
 // ══════════════════════════════════════════════════
 
@@ -105,7 +104,7 @@ void onWebSocketEvent(WStype_t type, uint8_t* payload, size_t length) {
         case WStype_CONNECTED:
             wsConnected = true;
             lastHeartbeatMs = millis();
-            Serial.printf("[WS] Connected to ws://%s:%d%s\n",
+            Serial.printf("[WS] Connected to wss://%s:%d%s\n",
                           FLASK_HOST, FLASK_PORT, FLASK_PATH);
             digitalWrite(LED, HIGH);
             wsClient.sendTXT("heartbeat");
@@ -171,8 +170,8 @@ void setup() {
     Serial.printf("\nWiFi connected — IP: %s\n", WiFi.localIP().toString().c_str());
 
     // ── WebSocket client ──────────────────────────
-    // Connect to FastAPI. The library auto-reconnects on drop.
-    wsClient.begin(FLASK_HOST, FLASK_PORT, FLASK_PATH);
+    // Connect to FastAPI through the HTTPS reverse proxy.
+    wsClient.beginSSL(FLASK_HOST, FLASK_PORT, FLASK_PATH);
     wsClient.onEvent(onWebSocketEvent);
     wsClient.setReconnectInterval(2000);     // retry every 2s if disconnected
 }
