@@ -2,19 +2,19 @@
   main.cpp — ESP32 Robot Car
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   Connection: ESP32 acts as WebSocket CLIENT.
-  It connects to Flask on your laptop and stays
+  It connects to FastAPI on your laptop and stays
   connected permanently. Commands arrive as single
   chars over the persistent socket — no HTTP
   handshake overhead per command.
 
   Protocol (text frames):
-    Flask → ESP32:  "F" forward
+    FastAPI → ESP32: "F" forward
                     "B" backward
                     "L" left
                     "R" right
                     "S" stop
                     "0"–"9" speed (0=min 80pwm, 9=max 255pwm)
-    ESP32 → Flask:  "ping" every 5s (keepalive)
+    ESP32 → FastAPI: "heartbeat" every 10s (keepalive)
 
   Dependencies (platformio.ini):
     lib_deps =
@@ -33,11 +33,11 @@
 const char* WIFI_SSID     = "iphone";
 const char* WIFI_PASSWORD = "123456789";
 
-// IP of the laptop running Flask (check ipconfig / ifconfig)
+// IP or domain of the machine running FastAPI / reverse proxy.
 // When you move to EC2, just change this to your EC2 public IP.
 const char* FLASK_HOST    = "192.168.137.1";
 const uint16_t FLASK_PORT = 5000;
-const char*  FLASK_PATH   = "/esp";    // matches @sock.route("/esp") in app.py
+const char*  FLASK_PATH   = "/esp";    // matches @app.websocket("/esp") in app.py
 // ══════════════════════════════════════════════════
 
 // Motor pins
@@ -50,6 +50,9 @@ const int SPEED_TABLE[10] = { 80, 97, 114, 131, 148, 165, 182, 199, 226, 255 };
 int currentSpeed = 200;   // default
 int turnSpeed = 220; // Fixed turning speed for better control
 WebSocketsClient wsClient;
+bool wsConnected = false;
+unsigned long lastHeartbeatMs = 0;
+constexpr unsigned long HEARTBEAT_INTERVAL_MS = 10000;
 
 // ──────────────────────────────────────────────────
 //  MOTOR HELPERS
@@ -94,15 +97,18 @@ void onWebSocketEvent(WStype_t type, uint8_t* payload, size_t length) {
 
         case WStype_DISCONNECTED:
             Serial.println("[WS] Disconnected — will auto-reconnect");
+            wsConnected = false;
             digitalWrite(LED, LOW);
             motorStop();   // safety: stop motors on disconnect
             break;
 
         case WStype_CONNECTED:
+            wsConnected = true;
+            lastHeartbeatMs = millis();
             Serial.printf("[WS] Connected to ws://%s:%d%s\n",
                           FLASK_HOST, FLASK_PORT, FLASK_PATH);
             digitalWrite(LED, HIGH);
-            wsClient.sendTXT("ping");   // announce presence immediately
+            wsClient.sendTXT("heartbeat");
             break;
 
         case WStype_TEXT: {
@@ -165,29 +171,34 @@ void setup() {
     Serial.printf("\nWiFi connected — IP: %s\n", WiFi.localIP().toString().c_str());
 
     // ── WebSocket client ──────────────────────────
-    // Connect to Flask. The library auto-reconnects on drop.
+    // Connect to FastAPI. The library auto-reconnects on drop.
     wsClient.begin(FLASK_HOST, FLASK_PORT, FLASK_PATH);
     wsClient.onEvent(onWebSocketEvent);
     wsClient.setReconnectInterval(2000);     // retry every 2s if disconnected
-
-    // Send a ping every 5000ms to keep the Flask connection alive
-    // and let Flask detect a dead ESP32 quickly.
-    wsClient.enableHeartbeat(5000, 2000, 2); // ping every 5s, pong timeout 2s, 2 retries
 }
 
 // ──────────────────────────────────────────────────
 //  LOOP
 // ──────────────────────────────────────────────────
 void loop() {
-    // This is ALL you need — the library handles reconnects,
-    // heartbeats, and event dispatch.
+    // The library handles reconnects and event dispatch.
+    // App-level heartbeats are sent explicitly below.
     wsClient.loop();
+
+    if (wsConnected) {
+        unsigned long now = millis();
+        if (now - lastHeartbeatMs >= HEARTBEAT_INTERVAL_MS) {
+            wsClient.sendTXT("heartbeat");
+            lastHeartbeatMs = now;
+        }
+    }
 
     // WiFi watchdog — reconnect if dropped
     if (WiFi.status() != WL_CONNECTED) {
         digitalWrite(LED, LOW);
         Serial.println("[WiFi] Lost — reconnecting…");
         WiFi.reconnect();
+        wsConnected = false;
         delay(5000);
     }
 }

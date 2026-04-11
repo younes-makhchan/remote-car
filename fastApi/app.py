@@ -38,8 +38,10 @@ PORT = int(os.getenv("PORT", "5000"))
 BASE = Path(__file__).parent
 DEFAULT_SPEED = 200
 ROTATION_SPEED = 210  # independent rotation speed target
-HEARTBEAT_INTERVAL = 2.0
-HEARTBEAT_TIMEOUT = HEARTBEAT_INTERVAL * 3
+ESP_HEARTBEAT_INTERVAL = 10.0
+ESP_HEARTBEAT_TIMEOUT = ESP_HEARTBEAT_INTERVAL * 3
+CTRL_HEARTBEAT_INTERVAL = 2.0
+CTRL_HEARTBEAT_TIMEOUT = CTRL_HEARTBEAT_INTERVAL * 3
 DRIVE_INTERVAL = 0.15
 
 def _parse_stun_servers(raw: str) -> list[str]:
@@ -476,14 +478,19 @@ async def esp_endpoint(ws: WebSocket):
 
     try:
         while True:
-            # Receive keepalive pings from ESP32 (every 5s)
-            # If ESP32 dies, this raises WebSocketDisconnect
-            msg = await ws.receive_text()
+            # The ESP32 sends an app-level heartbeat as a normal text frame.
+            # If the heartbeat stops arriving, treat the socket as dead.
+            msg = await asyncio.wait_for(ws.receive_text(), timeout=ESP_HEARTBEAT_TIMEOUT)
             esp32.touch()
+            if msg == "heartbeat":
+                log.debug("ESP32 heartbeat")
+                continue
             log.info(f"ESP32 → server: {msg!r}")
 
     except asyncio.TimeoutError:
-        log.warning("ESP32 ping timeout — closing")
+        log.warning("ESP32 heartbeat timeout — closing")
+        with suppress(Exception):
+            await ws.close(code=4410)
     except WebSocketDisconnect:
         log.info("ESP32 disconnected")
     except Exception as e:
@@ -507,7 +514,7 @@ async def controller_endpoint(ws: WebSocket):
     async def status_loop():
         try:
             while True:
-                await asyncio.sleep(HEARTBEAT_INTERVAL)
+                await asyncio.sleep(CTRL_HEARTBEAT_INTERVAL)
                 if controller.ws is not ws:
                     break
                 await controller.send_status()
@@ -519,7 +526,7 @@ async def controller_endpoint(ws: WebSocket):
     try:
         while True:
             try:
-                raw = await asyncio.wait_for(ws.receive_text(), timeout=HEARTBEAT_TIMEOUT)
+                raw = await asyncio.wait_for(ws.receive_text(), timeout=CTRL_HEARTBEAT_TIMEOUT)
             except asyncio.TimeoutError:
                 await controller.send_error("heartbeat_timeout")
                 await ws.close(code=4410)
