@@ -306,11 +306,14 @@ class ControllerManager:
         await self.stop_drive(send_stop=False)
         await self.send_status()
 
-    async def ensure_default_speed(self):
-        if self.esp.current_speed_digit != DEFAULT_SPEED_DIGIT and self.esp.connected:
-            sent = await self.esp.send(DEFAULT_SPEED_DIGIT)
-            if sent:
-                self.esp.current_speed_digit = DEFAULT_SPEED_DIGIT
+    async def ensure_configured_speed(self):
+        if not self.esp.connected:
+            return False
+        speed_digit = self.esp.current_speed_digit or DEFAULT_SPEED_DIGIT
+        sent = await self.esp.send(speed_digit)
+        if sent:
+            self.esp.current_speed_digit = speed_digit
+        return sent
 
     async def _safe_send(self, payload: dict, ws: Optional[WebSocket] = None):
         target = ws or self.ws
@@ -477,8 +480,7 @@ async def car_page():
 async def esp_endpoint(ws: WebSocket):
     await ws.accept()
     await esp32.register(ws)
-    esp32.current_speed_digit = DEFAULT_SPEED_DIGIT
-    await controller.ensure_default_speed()
+    await controller.ensure_configured_speed()
     await controller.send_status()
     log.info("✅ ESP32 connected")
 
