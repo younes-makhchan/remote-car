@@ -6,3 +6,4 @@
 venv
 ./*/venv
 ./*/stun.json
+fastApi/__pycache__/

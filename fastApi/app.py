@@ -36,13 +36,19 @@ from pydantic import BaseModel, field_validator
 # ══════════════════════════════════════════════════
 PORT = int(os.getenv("PORT", "5000"))
 BASE = Path(__file__).parent
-DEFAULT_SPEED = 200
+MANUAL_SPEED_MIN = 220
+MANUAL_SPEED_MAX = 250
+DEFAULT_SPEED = 240
 ROTATION_SPEED = 210  # independent rotation speed target
 ESP_HEARTBEAT_INTERVAL = 10.0
 ESP_HEARTBEAT_TIMEOUT = ESP_HEARTBEAT_INTERVAL * 3
 CTRL_HEARTBEAT_INTERVAL = 2.0
 CTRL_HEARTBEAT_TIMEOUT = CTRL_HEARTBEAT_INTERVAL * 3
 DRIVE_INTERVAL = 0.15
+
+
+def clamp_manual_speed(val: int) -> int:
+    return max(MANUAL_SPEED_MIN, min(MANUAL_SPEED_MAX, int(val)))
 
 def _parse_stun_servers(raw: str) -> list[str]:
     values = [part.strip() for part in raw.split(",") if part.strip()]
@@ -443,12 +449,12 @@ class RotateCommand(BaseModel):
 
 
 class SpeedCommand(BaseModel):
-    val: int = 200
+    val: int = DEFAULT_SPEED
 
     @field_validator("val")
     @classmethod
     def clamp(cls, v: int):
-        return max(80, min(255, v))
+        return clamp_manual_speed(v)
 
 
 @app.get("/controller", response_class=HTMLResponse)
@@ -584,13 +590,14 @@ async def controller_endpoint(ws: WebSocket):
                 if not isinstance(val, (int, float)):
                     await controller.send_ack("speed", "error", reason="bad_value")
                     continue
-                digit = speed_to_digit(int(val))
+                clamped_value = clamp_manual_speed(val)
+                digit = speed_to_digit(clamped_value)
                 sent = await esp32.send(digit)
                 if not sent:
                     await controller.send_ack("speed", "error", reason="esp_offline")
                     continue
                 esp32.current_speed_digit = digit
-                await controller.send_ack("speed", "ok", value=int(val))
+                await controller.send_ack("speed", "ok", value=clamped_value)
                 await controller.send_status()
                 continue
 
@@ -675,7 +682,7 @@ async def rotate(cmd: RotateCommand = Body(...)):
     return {"ok": True, "deg": deg, "duration": duration, "stop_confirmed": stop_ok}
 @app.post("/speed")
 async def speed(cmd: SpeedCommand = Body(...)):
-    val = cmd.val
+    val = clamp_manual_speed(cmd.val)
     digit = speed_to_digit(val)
     sent = await esp32.send(digit)
     if not sent:

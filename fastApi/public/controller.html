@@ -257,29 +257,39 @@
       -webkit-appearance: none;
       width: 100%;
       background: transparent;
+      touch-action: pan-x;
+      cursor: pointer;
+      padding: 8px 0;
+      --speed-progress: 66.7%;
     }
     input[type=range]::-webkit-slider-runnable-track {
-      height: 5px;
-      background: rgba(15, 23, 42, 0.7);
+      height: 8px;
+      background:
+        linear-gradient(90deg, rgba(56, 189, 248, 0.95) 0, rgba(56, 189, 248, 0.95) var(--speed-progress), rgba(15, 23, 42, 0.7) var(--speed-progress), rgba(15, 23, 42, 0.7) 100%);
       border-radius: 999px;
       border: 1px solid rgba(56, 189, 248, 0.2);
     }
     input[type=range]::-webkit-slider-thumb {
       -webkit-appearance: none;
-      height: 16px; width: 16px;
+      height: 22px; width: 22px;
       border-radius: 50%;
       background: var(--accent);
       box-shadow: 0 0 10px rgba(56, 189, 248, 0.7);
-      margin-top: -6px;
+      margin-top: -8px;
       border: 2px solid rgba(15, 23, 42, 0.9);
     }
     input[type=range]::-moz-range-track {
-      height: 5px;
+      height: 8px;
       background: rgba(15, 23, 42, 0.7);
       border-radius: 999px;
     }
+    input[type=range]::-moz-range-progress {
+      height: 8px;
+      background: rgba(56, 189, 248, 0.95);
+      border-radius: 999px;
+    }
     input[type=range]::-moz-range-thumb {
-      height: 16px; width: 16px;
+      height: 22px; width: 22px;
       border-radius: 50%;
       background: var(--accent);
       border: 2px solid rgba(15, 23, 42, 0.9);
@@ -431,9 +441,9 @@
       <div class="speed-group">
         <div class="speed-header">
           <span>Speed Limit</span>
-          <span id="speed-val">200</span>
+          <span id="speed-val">240</span>
         </div>
-        <input type="range" id="speed-slider" min="0" max="255" value="200">
+        <input type="range" id="speed-slider" min="220" max="250" value="240">
       </div>
     </div>
 
@@ -656,6 +666,16 @@ function buildRTCConfig() {
     if (!wsReady()) return;
     recordLatency('stop');
     if (!sendWs({ type: 'stop' })) flashError('NO LINK');
+  }
+
+  function syncSpeedUI(value) {
+    const min = Number(speedSlider.min);
+    const max = Number(speedSlider.max);
+    const nextValue = Math.max(min, Math.min(max, Number(value)));
+    const progress = ((nextValue - min) / (max - min)) * 100;
+    speedSlider.value = String(nextValue);
+    speedVal.textContent = String(nextValue);
+    speedSlider.style.setProperty('--speed-progress', `${progress}%`);
   }
 
   function connectCtrl() {
@@ -994,9 +1014,10 @@ function teardownPeer() {
     if (dir !== 'S') sendStop();
   });
 
-  speedSlider.addEventListener('input', (e) => { speedVal.textContent = e.target.value; });
+  speedSlider.addEventListener('input', (e) => { syncSpeedUI(e.target.value); });
   speedSlider.addEventListener('change', (e) => {
-    const value = Number(e.target.value);
+    syncSpeedUI(e.target.value);
+    const value = Number(speedSlider.value);
     if (wsReady()) {
       recordLatency('speed');
       if (!sendWs({ type: 'speed', value })) flashError('NO LINK');
@@ -1004,6 +1025,8 @@ function teardownPeer() {
       fetch("/speed", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ val: value }) });
     }
   });
+
+  syncSpeedUI(speedSlider.value);
 
   btnMicSend.addEventListener('click', async () => { micPublishEnabled = !micPublishEnabled; await refreshMicPublishState(); });
   btnCarAudio.addEventListener('click', () => { carAudioEnabled = !carAudioEnabled; refreshCarAudioState(); });
