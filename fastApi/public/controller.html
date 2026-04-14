@@ -172,114 +172,108 @@
       border-color: rgba(148, 163, 184, 0.28);
       opacity: 0.7;
     }
+    .media-btn.active {
+      background: rgba(56, 189, 248, 0.16);
+      border-color: rgba(125, 211, 252, 0.5);
+      color: #f8fafc;
+      box-shadow: 0 0 18px rgba(56, 189, 248, 0.22);
+    }
     .media-btn:active { transform: scale(0.92); }
 
-    /* ─── Bottom controls ─── */
-    .hud-bottom {
-      display: flex;
-      justify-content: flex-start;
-      align-items: flex-end;
-      gap: 12px;
-      pointer-events: none;
-      padding-left: max(10px, env(safe-area-inset-left));
-      padding-bottom: max(8px, env(safe-area-inset-bottom));
-    }
-
-    .control-stack {
-      width: auto;
-      display: flex;
-      flex-direction: row;
-      gap: 12px;
+    .settings-panel {
+      position: fixed;
+      top: calc(max(16px, env(safe-area-inset-top)) + 52px);
+      right: max(16px, env(safe-area-inset-right));
+      width: min(280px, calc(100vw - 32px));
+      padding: 14px;
+      border-radius: 18px;
+      background: rgba(8, 13, 22, 0.8);
+      border: 1px solid rgba(56, 189, 248, 0.18);
+      backdrop-filter: blur(16px);
+      box-shadow: 0 18px 40px rgba(2, 6, 23, 0.32);
       pointer-events: auto;
-      margin: 0;
-      align-items: flex-end;
+      opacity: 0;
+      transform: translateY(-8px);
+      transition: opacity 0.18s ease, transform 0.18s ease;
+      z-index: 14;
     }
-
-    /* ─── Speed group ─── */
-    .speed-group {
-      background: rgba(8, 13, 22, 0.32);
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      border-radius: 22px;
-      padding: 12px 8px 14px;
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-      align-items: center;
-      backdrop-filter: blur(10px);
-      width: 58px;
-      min-height: 210px;
-      box-shadow: 0 12px 28px rgba(2, 6, 23, 0.24);
+    .settings-panel.hidden {
+      opacity: 0;
+      pointer-events: none;
+      transform: translateY(-8px);
     }
-    .speed-header {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      flex-direction: column;
-      gap: 6px;
-      font-size: 9px;
-      letter-spacing: 0.18em;
-      text-transform: uppercase;
-      color: var(--text-muted);
-      text-align: center;
+    .settings-panel:not(.hidden) {
+      opacity: 1;
+      transform: translateY(0);
     }
-    #speed-val {
+    .settings-panel h3 {
       font-family: 'Orbitron', sans-serif;
-      font-size: 14px;
-      color: rgba(255, 255, 255, 0.92);
+      font-size: 12px;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: #f8fafc;
+      margin-bottom: 8px;
+    }
+    .settings-panel p {
+      font-size: 10px;
+      line-height: 1.5;
       letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: rgba(226, 232, 240, 0.68);
+      margin-bottom: 12px;
     }
-    .speed-slider-wrap {
+    .settings-actions {
       display: flex;
-      align-items: center;
-      justify-content: center;
-      width: 100%;
+      gap: 8px;
+    }
+    .settings-btn {
       flex: 1;
-    }
-    input[type=range] {
-      -webkit-appearance: none;
-      width: 140px;
-      background: transparent;
-      touch-action: none;
+      border: 1px solid rgba(56, 189, 248, 0.24);
+      background: rgba(15, 23, 42, 0.7);
+      color: #e2e8f0;
+      border-radius: 14px;
+      padding: 10px 12px;
+      font-size: 10px;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
       cursor: pointer;
-      padding: 0;
-      --speed-progress: 66.7%;
-      transform: rotate(-90deg);
-      transform-origin: center;
+      transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease;
     }
-    input[type=range]::-webkit-slider-runnable-track {
-      height: 6px;
-      background:
-        linear-gradient(90deg, rgba(226, 232, 240, 0.86) 0, rgba(226, 232, 240, 0.86) var(--speed-progress), rgba(255, 255, 255, 0.16) var(--speed-progress), rgba(255, 255, 255, 0.16) 100%);
-      border-radius: 999px;
-      border: 1px solid rgba(255, 255, 255, 0.08);
-    }
-    input[type=range]::-webkit-slider-thumb {
-      -webkit-appearance: none;
-      height: 18px; width: 18px;
-      border-radius: 50%;
-      background: rgba(255, 255, 255, 0.95);
-      box-shadow: 0 0 10px rgba(255, 255, 255, 0.25);
-      margin-top: -7px;
-      border: 2px solid rgba(15, 23, 42, 0.75);
-    }
-    input[type=range]::-moz-range-track {
-      height: 6px;
-      background: rgba(255, 255, 255, 0.16);
-      border-radius: 999px;
-    }
-    input[type=range]::-moz-range-progress {
-      height: 6px;
-      background: rgba(226, 232, 240, 0.86);
-      border-radius: 999px;
-    }
-    input[type=range]::-moz-range-thumb {
-      height: 18px; width: 18px;
-      border-radius: 50%;
-      background: rgba(255, 255, 255, 0.95);
-      border: 2px solid rgba(15, 23, 42, 0.75);
-      box-shadow: 0 0 10px rgba(255, 255, 255, 0.25);
+    .settings-btn:hover,
+    .settings-btn.active {
+      background: rgba(56, 189, 248, 0.14);
+      border-color: rgba(125, 211, 252, 0.48);
+      color: #f8fafc;
     }
 
+    .joystick-overlay {
+      position: fixed;
+      left: max(12px, env(safe-area-inset-left));
+      bottom: max(12px, env(safe-area-inset-bottom));
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      pointer-events: auto;
+      z-index: 12;
+      --joystick-size: 168px;
+    }
+    .joystick-overlay.editing {
+      z-index: 15;
+    }
+    .joystick-overlay.editing .joystick-card {
+      padding: 10px;
+      border-radius: 26px;
+      background: rgba(8, 13, 22, 0.38);
+      border: 1px dashed rgba(125, 211, 252, 0.34);
+      box-shadow: 0 14px 32px rgba(2, 6, 23, 0.26);
+      backdrop-filter: blur(12px);
+    }
+    .joystick-overlay.editing .joystick-header {
+      background: rgba(56, 189, 248, 0.12);
+      border-color: rgba(125, 211, 252, 0.32);
+      color: rgba(248, 250, 252, 0.88);
+    }
     .joystick-card {
       background: transparent;
       border: none;
@@ -315,7 +309,7 @@
     }
     .joystick-shell {
       position: relative;
-      width: min(28vw, 168px);
+      width: var(--joystick-size);
       aspect-ratio: 1;
       border-radius: 50%;
       border: 1px solid rgba(255, 255, 255, 0.08);
@@ -330,6 +324,9 @@
       opacity: 0.35;
       filter: saturate(0.3);
       cursor: not-allowed;
+    }
+    .joystick-overlay.editing .joystick-shell {
+      cursor: grab;
     }
     .joystick-shell::before,
     .joystick-shell::after {
@@ -384,22 +381,35 @@
     .joystick-label.bottom { bottom: 12px; left: 50%; transform: translateX(-50%); }
     .joystick-label.left { left: 12px; top: 50%; transform: translateY(-50%); }
     .joystick-label.right { right: 12px; top: 50%; transform: translateY(-50%); }
-    .joystick-hint {
-      display: none;
+    .joystick-resize-handle {
+      position: absolute;
+      right: 2px;
+      bottom: 0;
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      border: 1px solid rgba(125, 211, 252, 0.34);
+      background: rgba(8, 13, 22, 0.76);
+      color: rgba(248, 250, 252, 0.86);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      transform: translate(28%, 24%);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.18s ease, transform 0.18s ease;
+      touch-action: none;
+      cursor: nwse-resize;
+      box-shadow: 0 10px 24px rgba(2, 6, 23, 0.28);
+    }
+    .joystick-overlay.editing .joystick-resize-handle {
+      opacity: 1;
+      pointer-events: auto;
     }
     @media (max-width: 720px) {
-      .control-stack {
-        gap: 10px;
-      }
-      .joystick-shell {
-        width: min(31vw, 150px);
-      }
-      .speed-group {
-        width: 52px;
-        min-height: 188px;
-      }
-      input[type=range] {
-        width: 126px;
+      .settings-panel {
+        top: calc(max(16px, env(safe-area-inset-top)) + 48px);
       }
     }
   </style>
@@ -433,37 +443,34 @@
       <button id="btnMicSend" class="media-btn" type="button" aria-pressed="true" title="Toggle Mic Send">🎙️</button>
       <button id="btnCarAudio" class="media-btn" type="button" aria-pressed="true" title="Toggle Car Audio">🔊</button>
       <button id="btnCarVideo" class="media-btn" type="button" aria-pressed="true" title="Toggle Car Video">🎥</button>
+      <button id="btnSettings" class="media-btn" type="button" aria-pressed="false" title="Joystick Settings">⚙️</button>
     </div>
   </div>
 
-  <!-- BOTTOM CONTROLS -->
-  <div class="hud-bottom">
+  <div id="settingsPanel" class="settings-panel hidden">
+    <h3>Stick Layout</h3>
+    <p id="settingsSummary">Open edit mode, drag the stick to place it, then drag the corner handle to resize it.</p>
+    <div class="settings-actions">
+      <button id="btnLayoutEdit" class="settings-btn" type="button">Edit Layout</button>
+      <button id="btnLayoutReset" class="settings-btn" type="button">Reset</button>
+    </div>
+  </div>
 
-    <div class="control-stack">
-      <div class="speed-group">
-        <div class="speed-header">
-          <span>Speed</span>
-          <span id="speed-val">240</span>
-        </div>
-        <div class="speed-slider-wrap">
-          <input type="range" id="speed-slider" min="220" max="250" value="240">
-        </div>
+  <div id="joystick-overlay" class="joystick-overlay">
+    <div class="joystick-card">
+      <div class="joystick-header">
+        <span>Drive Stick</span>
+        <span id="joystick-state">IDLE</span>
       </div>
-      <div class="joystick-card">
-        <div class="joystick-header">
-          <span>Drive Stick</span>
-          <span id="joystick-state">IDLE</span>
-        </div>
-        <div class="joystick-shell" id="joystick" aria-label="Drive joystick" role="application">
-          <div class="joystick-ring"></div>
-          <span class="joystick-label top">F</span>
-          <span class="joystick-label right">R</span>
-          <span class="joystick-label bottom">B</span>
-          <span class="joystick-label left">L</span>
-          <div class="joystick-knob" id="joystick-knob"></div>
-        </div>
-        <div class="joystick-hint">Drag and hold to move. Release to stop.</div>
+      <div class="joystick-shell" id="joystick" aria-label="Drive joystick" role="application">
+        <div class="joystick-ring"></div>
+        <span class="joystick-label top">F</span>
+        <span class="joystick-label right">R</span>
+        <span class="joystick-label bottom">B</span>
+        <span class="joystick-label left">L</span>
+        <div class="joystick-knob" id="joystick-knob"></div>
       </div>
+      <button id="joystick-resize-handle" class="joystick-resize-handle" type="button" aria-label="Resize joystick">⤡</button>
     </div>
   </div>
 </div>
@@ -482,8 +489,6 @@
   const msEl = document.getElementById('ms-val');
   const linkStatusEl = document.getElementById('link-status');
   const statusDot = document.getElementById('status-dot');
-  const speedSlider = document.getElementById('speed-slider');
-  const speedVal = document.getElementById('speed-val');
   const joystick = document.getElementById('joystick');
   const joystickKnob = document.getElementById('joystick-knob');
   const joystickState = document.getElementById('joystick-state');
@@ -492,6 +497,13 @@
   const btnMicSend = document.getElementById('btnMicSend');
   const btnCarAudio = document.getElementById('btnCarAudio');
   const btnCarVideo = document.getElementById('btnCarVideo');
+  const btnSettings = document.getElementById('btnSettings');
+  const settingsPanel = document.getElementById('settingsPanel');
+  const settingsSummary = document.getElementById('settingsSummary');
+  const btnLayoutEdit = document.getElementById('btnLayoutEdit');
+  const btnLayoutReset = document.getElementById('btnLayoutReset');
+  const joystickOverlay = document.getElementById('joystick-overlay');
+  const joystickResizeHandle = document.getElementById('joystick-resize-handle');
   const fsPrompt = document.getElementById('ctrlFsPrompt');
   const fsButton = document.getElementById('ctrlFsButton');
 
@@ -500,7 +512,6 @@
   let reconnectTimer = null;
   let heartbeatTimer = null;
   let pendingTimes = new Map();
-  let activeDir = null;
   let stopArmed = false;
   let lastStatusSnapshot = { esp: false, car: false };
   let errorFlashTimer = null;
@@ -519,10 +530,133 @@
   let carAudioEnabled = true;
   let carVideoVisible = true;
   let controlBootstrapped = false;
+  let controlsEnabled = false;
   let joystickPointerId = null;
-  let joystickSentDir = null;
+  let joystickSentMix = null;
+  let joystickVector = { x: 0, y: 0 };
+  let settingsOpen = false;
+  let joystickEditMode = false;
+  let joystickLayoutDrag = null;
+  let joystickResizeDrag = null;
+  let joystickLayoutPointerId = null;
+  let joystickResizePointerId = null;
+  let joystickSizePx = 168;
 
   const JOYSTICK_DEADZONE = 0.28;
+  const JOYSTICK_DIRECTION_THRESHOLD = 0.24;
+  const JOYSTICK_PWM_STEP = 6;
+  const JOYSTICK_SPEED_MIN = 200;
+  const JOYSTICK_SPEED_MAX = 250;
+  const JOYSTICK_LAYOUT_STORAGE_KEY = 'apex-t-control.joystick-layout.v1';
+  const JOYSTICK_LAYOUT_MARGIN = 12;
+  const JOYSTICK_SIZE_MIN = 120;
+  const JOYSTICK_SIZE_MAX = 220;
+  const JOYSTICK_DEFAULT_LAYOUT = { leftRatio: 0.04, bottomRatio: 0.04, sizeRatio: 0.24 };
+  let joystickLayout = loadJoystickLayout();
+
+  function clamp(value, min, max) {
+    return Math.min(max, Math.max(min, value));
+  }
+
+  function loadJoystickLayout() {
+    try {
+      const raw = localStorage.getItem(JOYSTICK_LAYOUT_STORAGE_KEY);
+      if (!raw) return { ...JOYSTICK_DEFAULT_LAYOUT };
+      const parsed = JSON.parse(raw);
+      const leftRatio = Number(parsed.leftRatio);
+      const bottomRatio = Number(parsed.bottomRatio);
+      const sizeRatio = Number(parsed.sizeRatio);
+      return {
+        leftRatio: Number.isFinite(leftRatio) ? clamp(leftRatio, 0, 1) : JOYSTICK_DEFAULT_LAYOUT.leftRatio,
+        bottomRatio: Number.isFinite(bottomRatio) ? clamp(bottomRatio, 0, 1) : JOYSTICK_DEFAULT_LAYOUT.bottomRatio,
+        sizeRatio: Number.isFinite(sizeRatio) ? clamp(sizeRatio, 0.14, 0.42) : JOYSTICK_DEFAULT_LAYOUT.sizeRatio,
+      };
+    } catch (err) {
+      return { ...JOYSTICK_DEFAULT_LAYOUT };
+    }
+  }
+
+  function persistJoystickLayout() {
+    localStorage.setItem(JOYSTICK_LAYOUT_STORAGE_KEY, JSON.stringify(joystickLayout));
+  }
+
+  function currentViewportMin() {
+    return Math.max(Math.min(window.innerWidth, window.innerHeight), 1);
+  }
+
+  function applyJoystickSize(sizePx) {
+    joystickSizePx = clamp(Math.round(sizePx), JOYSTICK_SIZE_MIN, JOYSTICK_SIZE_MAX);
+    joystickOverlay.style.setProperty('--joystick-size', `${joystickSizePx}px`);
+  }
+
+  function joystickPositionBounds() {
+    const width = joystickOverlay.offsetWidth || joystickSizePx;
+    const height = joystickOverlay.offsetHeight || joystickSizePx;
+    return {
+      maxLeft: Math.max(JOYSTICK_LAYOUT_MARGIN, window.innerWidth - width - JOYSTICK_LAYOUT_MARGIN),
+      maxBottom: Math.max(JOYSTICK_LAYOUT_MARGIN, window.innerHeight - height - JOYSTICK_LAYOUT_MARGIN),
+    };
+  }
+
+  function commitJoystickLayout(left, bottom, sizePx = joystickSizePx, persist = true) {
+    applyJoystickSize(sizePx);
+    const { maxLeft, maxBottom } = joystickPositionBounds();
+    const nextLeft = clamp(Math.round(left), JOYSTICK_LAYOUT_MARGIN, maxLeft);
+    const nextBottom = clamp(Math.round(bottom), JOYSTICK_LAYOUT_MARGIN, maxBottom);
+    joystickOverlay.style.left = `${nextLeft}px`;
+    joystickOverlay.style.bottom = `${nextBottom}px`;
+    joystickLayout = {
+      leftRatio: maxLeft > JOYSTICK_LAYOUT_MARGIN ? nextLeft / maxLeft : 0,
+      bottomRatio: maxBottom > JOYSTICK_LAYOUT_MARGIN ? nextBottom / maxBottom : 0,
+      sizeRatio: joystickSizePx / currentViewportMin(),
+    };
+    if (persist) persistJoystickLayout();
+  }
+
+  function applyStoredJoystickLayout(persist = false) {
+    const sizePx = clamp(Math.round(currentViewportMin() * joystickLayout.sizeRatio), JOYSTICK_SIZE_MIN, JOYSTICK_SIZE_MAX);
+    applyJoystickSize(sizePx);
+    const { maxLeft, maxBottom } = joystickPositionBounds();
+    const left = maxLeft <= JOYSTICK_LAYOUT_MARGIN ? JOYSTICK_LAYOUT_MARGIN : joystickLayout.leftRatio * maxLeft;
+    const bottom = maxBottom <= JOYSTICK_LAYOUT_MARGIN ? JOYSTICK_LAYOUT_MARGIN : joystickLayout.bottomRatio * maxBottom;
+    commitJoystickLayout(left, bottom, sizePx, persist);
+  }
+
+  function currentJoystickPixels() {
+    return {
+      left: Number.parseFloat(joystickOverlay.style.left) || JOYSTICK_LAYOUT_MARGIN,
+      bottom: Number.parseFloat(joystickOverlay.style.bottom) || JOYSTICK_LAYOUT_MARGIN,
+    };
+  }
+
+  function setSettingsOpen(nextOpen) {
+    if (!nextOpen && joystickEditMode) setJoystickEditMode(false);
+    settingsOpen = nextOpen;
+    settingsPanel.classList.toggle('hidden', !settingsOpen);
+    btnSettings.classList.toggle('active', settingsOpen || joystickEditMode);
+    btnSettings.setAttribute('aria-pressed', String(settingsOpen || joystickEditMode));
+  }
+
+  function setJoystickEditMode(nextMode) {
+    joystickEditMode = nextMode;
+    if (!joystickEditMode) {
+      joystickLayoutPointerId = null;
+      joystickResizePointerId = null;
+      joystickLayoutDrag = null;
+      joystickResizeDrag = null;
+    }
+    joystickOverlay.classList.toggle('editing', joystickEditMode);
+    btnLayoutEdit.classList.toggle('active', joystickEditMode);
+    btnLayoutEdit.textContent = joystickEditMode ? 'Done' : 'Edit Layout';
+    btnSettings.classList.toggle('active', settingsOpen || joystickEditMode);
+    btnSettings.setAttribute('aria-pressed', String(settingsOpen || joystickEditMode));
+    settingsSummary.textContent = joystickEditMode
+      ? 'Drag anywhere on the stick block to move it. Drag the corner handle to resize it.'
+      : 'Open edit mode, drag the stick to place it, then drag the corner handle to resize it.';
+    if (joystickEditMode) {
+      resetJoystick(true);
+    }
+  }
 
 function buildRTCConfig() {
   const iceServers = STUN_SERVERS.map(url => {
@@ -566,10 +700,6 @@ function buildRTCConfig() {
     return socket && socket.readyState === WebSocket.OPEN;
   }
 
-  function allControls() {
-    return [joystick, speedSlider];
-  }
-
   async function requestFullscreen(element) {
     const target = element || document.documentElement;
     if (!target) return Promise.resolve();
@@ -596,7 +726,7 @@ function buildRTCConfig() {
   }
 
   function setControlsEnabled(enabled) {
-    speedSlider.disabled = !enabled;
+    controlsEnabled = enabled;
     joystick.classList.toggle('disabled', !enabled);
     joystick.setAttribute('aria-disabled', String(!enabled));
     if (!enabled) resetJoystick(false);
@@ -655,36 +785,70 @@ function buildRTCConfig() {
 
   function resetJoystick(sendStopCommand = false) {
     joystickPointerId = null;
+    joystickVector = { x: 0, y: 0 };
     updateJoystickVisual(0, 0, false);
     setJoystickStateLabel(null);
     if (sendStopCommand) sendStop();
-    joystickSentDir = null;
+    joystickSentMix = null;
   }
 
-  function resolveJoystickDirection(nx, ny) {
+  function resolveJoystickLabel(nx, ny) {
+    const vertical = ny <= -JOYSTICK_DIRECTION_THRESHOLD ? 'F' : ny >= JOYSTICK_DIRECTION_THRESHOLD ? 'B' : '';
+    const horizontal = nx >= JOYSTICK_DIRECTION_THRESHOLD ? 'R' : nx <= -JOYSTICK_DIRECTION_THRESHOLD ? 'L' : '';
+    return `${vertical}${horizontal}` || vertical || horizontal || 'IDLE';
+  }
+
+  function computeAnalogDrive(nx, ny) {
     const magnitude = Math.hypot(nx, ny);
-    if (magnitude < JOYSTICK_DEADZONE) return null;
-    if (Math.abs(nx) > Math.abs(ny)) {
-      return nx > 0 ? 'R' : 'L';
+    if (magnitude < JOYSTICK_DEADZONE) return { left: 0, right: 0 };
+    const normalizedMagnitude = Math.min(1, (magnitude - JOYSTICK_DEADZONE) / (1 - JOYSTICK_DEADZONE));
+    const targetSpeed = JOYSTICK_SPEED_MIN + normalizedMagnitude * (JOYSTICK_SPEED_MAX - JOYSTICK_SPEED_MIN);
+    const unitX = magnitude > 0 ? nx / magnitude : 0;
+    const unitY = magnitude > 0 ? ny / magnitude : 0;
+    let left = (-unitY * targetSpeed) + (unitX * targetSpeed);
+    let right = (-unitY * targetSpeed) - (unitX * targetSpeed);
+    const peak = Math.max(Math.abs(left), Math.abs(right), 1);
+    if (peak > targetSpeed) {
+      const scale = targetSpeed / peak;
+      left *= scale;
+      right *= scale;
     }
-    return ny > 0 ? 'B' : 'F';
+    return { left: Math.round(left), right: Math.round(right) };
   }
 
-  function sendJoystickDirection(nextDir) {
-    if (nextDir === joystickSentDir) return;
-    if (!nextDir) {
-      if (joystickSentDir) sendStop();
-      joystickSentDir = null;
+  function sendAnalogDrive(left, right, label) {
+    const nextMix = { left, right, label };
+    if (joystickSentMix &&
+        Math.abs(joystickSentMix.left - left) < JOYSTICK_PWM_STEP &&
+        Math.abs(joystickSentMix.right - right) < JOYSTICK_PWM_STEP &&
+        joystickSentMix.label === label) {
+      return;
+    }
+    stopArmed = true;
+    if (!sendWs({ type: 'drive_analog', left, right, label })) {
+      flashError('NO LINK');
+      return;
+    }
+    joystickSentMix = nextMix;
+    setJoystickStateLabel(label);
+  }
+
+  function refreshAnalogDrive() {
+    const { x, y } = joystickVector;
+    const magnitude = Math.hypot(x, y);
+    if (magnitude < JOYSTICK_DEADZONE) {
+      if (joystickSentMix) sendStop();
+      joystickSentMix = null;
       setJoystickStateLabel(null);
       return;
     }
-    sendDrive(nextDir);
-    joystickSentDir = nextDir;
-    setJoystickStateLabel(nextDir);
+    const label = resolveJoystickLabel(x, y);
+    const { left, right } = computeAnalogDrive(x, y);
+    sendAnalogDrive(left, right, label);
   }
 
   function updateJoystickFromPoint(clientX, clientY) {
-    if (joystick.classList.contains('disabled')) return;
+    if (!controlsEnabled || joystickEditMode) return;
     const rect = joystick.getBoundingClientRect();
     const radius = rect.width / 2;
     const knobRadius = joystickKnob.getBoundingClientRect().width / 2;
@@ -697,8 +861,9 @@ function buildRTCConfig() {
     const y = rawY * scale;
     const normalizedX = maxDistance ? x / maxDistance : 0;
     const normalizedY = maxDistance ? y / maxDistance : 0;
+    joystickVector = { x: normalizedX, y: normalizedY };
     updateJoystickVisual(x, y, true);
-    sendJoystickDirection(resolveJoystickDirection(normalizedX, normalizedY));
+    refreshAnalogDrive();
   }
 
   function sendWs(payload) {
@@ -707,29 +872,12 @@ function buildRTCConfig() {
     catch (err) { console.error('WS send failed', err); return false; }
   }
 
-  function sendDrive(dir) {
-    if (!wsReady()) return;
-    stopArmed = true;
-    recordLatency(`drive:${dir}`);
-    if (!sendWs({ type: 'drive', dir })) flashError('NO LINK');
-  }
-
   function sendStop(force = false) {
     if (!force && !stopArmed) return;
     stopArmed = false;
     if (!wsReady()) return;
     recordLatency('stop');
     if (!sendWs({ type: 'stop' })) flashError('NO LINK');
-  }
-
-  function syncSpeedUI(value) {
-    const min = Number(speedSlider.min);
-    const max = Number(speedSlider.max);
-    const nextValue = Math.max(min, Math.min(max, Number(value)));
-    const progress = ((nextValue - min) / (max - min)) * 100;
-    speedSlider.value = String(nextValue);
-    speedVal.textContent = String(nextValue);
-    speedSlider.style.setProperty('--speed-progress', `${progress}%`);
   }
 
   function connectCtrl() {
@@ -755,7 +903,7 @@ function buildRTCConfig() {
 
     socket.addEventListener('close', () => {
       clearInterval(heartbeatTimer); heartbeatTimer = null;
-      msEl.textContent = '--'; activeDir = null; stopArmed = false;
+      msEl.textContent = '--'; stopArmed = false;
       pendingTimes.clear(); resetJoystick(false); applyLinkStatus();
       scheduleReconnect();
     });
@@ -782,16 +930,19 @@ function buildRTCConfig() {
   }
 
   function handleAck(payload) {
-    const baseKey = payload.cmd === 'drive' ? `drive:${payload.dir || ''}` : payload.cmd;
-    fulfillLatency(baseKey);
+    fulfillLatency(payload.cmd);
     if (payload.status !== 'ok') {
       flashError(payload.reason || 'FAILED');
-      if (payload.cmd === 'drive' || payload.cmd === 'stop') { activeDir = null; stopArmed = false; resetJoystick(false); }
+      if (payload.cmd === 'drive_analog' || payload.cmd === 'stop') { stopArmed = false; resetJoystick(false); }
       return;
     }
     switch (payload.cmd) {
-      case 'drive': activeDir = payload.dir || null; break;
-      case 'stop': activeDir = null; stopArmed = false; resetJoystick(false); break;
+      case 'drive_analog':
+        if (typeof payload.left === 'number' && typeof payload.right === 'number') {
+          joystickSentMix = { left: payload.left, right: payload.right, label: payload.label || 'IDLE' };
+        }
+        break;
+      case 'stop': stopArmed = false; resetJoystick(false); break;
     }
     applyLinkStatus();
   }
@@ -1002,7 +1153,7 @@ function teardownPeer() {
   }
 
   joystick.addEventListener('pointerdown', (e) => {
-    if (joystick.classList.contains('disabled')) return;
+    if (!controlsEnabled || joystickEditMode) return;
     e.preventDefault();
     joystickPointerId = e.pointerId;
     joystick.setPointerCapture(e.pointerId);
@@ -1025,53 +1176,86 @@ function teardownPeer() {
   joystick.addEventListener('pointerup', endJoystick);
   joystick.addEventListener('pointercancel', endJoystick);
 
-  const keyBindings = { arrowup: 'F', w: 'F', arrowdown: 'B', s: 'B', ' ': 'S' };
-  document.addEventListener('keydown', (e) => {
-    if (e.repeat) return;
-    const dir = keyBindings[e.key.toLowerCase()] || keyBindings[e.code.toLowerCase()];
-    if (!dir) return;
-    if (dir === 'S') {
-      resetJoystick(false);
-      sendStop(true);
-    } else {
-      sendDrive(dir);
-      joystickSentDir = dir;
-      setJoystickStateLabel(dir);
-    }
-  });
-  document.addEventListener('keyup', (e) => {
-    const dir = keyBindings[e.key.toLowerCase()] || keyBindings[e.code.toLowerCase()];
-    if (!dir) return;
-    if (dir !== 'S') resetJoystick(true);
+  joystickOverlay.addEventListener('pointerdown', (e) => {
+    if (!joystickEditMode) return;
+    if (e.target === joystickResizeHandle) return;
+    e.preventDefault();
+    resetJoystick(true);
+    joystickLayoutPointerId = e.pointerId;
+    joystickOverlay.setPointerCapture(e.pointerId);
+    const { left, bottom } = currentJoystickPixels();
+    joystickLayoutDrag = { startX: e.clientX, startY: e.clientY, left, bottom };
   });
 
-  speedSlider.addEventListener('input', (e) => { syncSpeedUI(e.target.value); });
-  speedSlider.addEventListener('change', (e) => {
-    syncSpeedUI(e.target.value);
-    const value = Number(speedSlider.value);
-    if (wsReady()) {
-      recordLatency('speed');
-      if (!sendWs({ type: 'speed', value })) flashError('NO LINK');
-    } else {
-      fetch("/speed", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ val: value }) });
-    }
+  joystickOverlay.addEventListener('pointermove', (e) => {
+    if (e.pointerId !== joystickLayoutPointerId || !joystickLayoutDrag) return;
+    e.preventDefault();
+    const left = joystickLayoutDrag.left + (e.clientX - joystickLayoutDrag.startX);
+    const bottom = joystickLayoutDrag.bottom - (e.clientY - joystickLayoutDrag.startY);
+    commitJoystickLayout(left, bottom);
   });
 
-  syncSpeedUI(speedSlider.value);
+  const endJoystickLayoutDrag = (e) => {
+    if (e.pointerId !== joystickLayoutPointerId) return;
+    e.preventDefault();
+    if (joystickOverlay.hasPointerCapture(e.pointerId)) joystickOverlay.releasePointerCapture(e.pointerId);
+    joystickLayoutPointerId = null;
+    joystickLayoutDrag = null;
+  };
+
+  joystickOverlay.addEventListener('pointerup', endJoystickLayoutDrag);
+  joystickOverlay.addEventListener('pointercancel', endJoystickLayoutDrag);
+
+  joystickResizeHandle.addEventListener('pointerdown', (e) => {
+    if (!joystickEditMode) return;
+    e.preventDefault();
+    e.stopPropagation();
+    resetJoystick(true);
+    joystickResizePointerId = e.pointerId;
+    joystickResizeHandle.setPointerCapture(e.pointerId);
+    const { left, bottom } = currentJoystickPixels();
+    joystickResizeDrag = { startX: e.clientX, startY: e.clientY, sizePx: joystickSizePx, left, bottom };
+  });
+
+  joystickResizeHandle.addEventListener('pointermove', (e) => {
+    if (e.pointerId !== joystickResizePointerId || !joystickResizeDrag) return;
+    e.preventDefault();
+    const delta = ((e.clientX - joystickResizeDrag.startX) + (e.clientY - joystickResizeDrag.startY)) / 2;
+    commitJoystickLayout(joystickResizeDrag.left, joystickResizeDrag.bottom, joystickResizeDrag.sizePx + delta);
+  });
+
+  const endJoystickResize = (e) => {
+    if (e.pointerId !== joystickResizePointerId) return;
+    e.preventDefault();
+    if (joystickResizeHandle.hasPointerCapture(e.pointerId)) joystickResizeHandle.releasePointerCapture(e.pointerId);
+    joystickResizePointerId = null;
+    joystickResizeDrag = null;
+  };
+
+  joystickResizeHandle.addEventListener('pointerup', endJoystickResize);
+  joystickResizeHandle.addEventListener('pointercancel', endJoystickResize);
 
   btnMicSend.addEventListener('click', async () => { micPublishEnabled = !micPublishEnabled; await refreshMicPublishState(); });
   btnCarAudio.addEventListener('click', () => { carAudioEnabled = !carAudioEnabled; refreshCarAudioState(); });
   btnCarVideo.addEventListener('click', () => { carVideoVisible = !carVideoVisible; refreshCarVideoState(); });
+  btnSettings.addEventListener('click', () => { setSettingsOpen(!settingsOpen); });
+  btnLayoutEdit.addEventListener('click', () => { setJoystickEditMode(!joystickEditMode); });
+  btnLayoutReset.addEventListener('click', () => {
+    joystickLayout = { ...JOYSTICK_DEFAULT_LAYOUT };
+    applyStoredJoystickLayout(true);
+  });
 
   setControlsEnabled(false);
   setLinkDisplay('OFFLINE', false);
   updateMicToggleUI(); refreshCarAudioState(); refreshCarVideoState();
+  applyStoredJoystickLayout(false);
 
   window.addEventListener('focus', () => {
     if (!controlBootstrapped) return;
     connectSignalChannel();
     connectCtrl();
   });
+  window.addEventListener('resize', () => { applyStoredJoystickLayout(false); });
   window.addEventListener('beforeunload', () => {
     if (socket) try { socket.close(); } catch (_) {}
     if (signalSocket) try { signalSocket.close(); } catch (_) {}

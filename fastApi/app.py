@@ -29,26 +29,26 @@ from typing import Optional
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query, Body
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, field_validator
 
 # ══════════════════════════════════════════════════
 #  CONFIG
 # ══════════════════════════════════════════════════
 PORT = int(os.getenv("PORT", "5000"))
 BASE = Path(__file__).parent
-MANUAL_SPEED_MIN = 220
-MANUAL_SPEED_MAX = 250
-DEFAULT_SPEED = 240
-ROTATION_SPEED = 210  # independent rotation speed target
+ICE_JSON_PATH = BASE / "ice_servers.json"
 ESP_HEARTBEAT_INTERVAL = 10.0
 ESP_HEARTBEAT_TIMEOUT = ESP_HEARTBEAT_INTERVAL * 3
 CTRL_HEARTBEAT_INTERVAL = 2.0
 CTRL_HEARTBEAT_TIMEOUT = CTRL_HEARTBEAT_INTERVAL * 3
-DRIVE_INTERVAL = 0.15
+MOTOR_POWER_MAX = 255
 
 
-def clamp_manual_speed(val: int) -> int:
-    return max(MANUAL_SPEED_MIN, min(MANUAL_SPEED_MAX, int(val)))
+def clamp_motor_power(val: int) -> int:
+    return max(-MOTOR_POWER_MAX, min(MOTOR_POWER_MAX, int(val)))
+
+
+def format_motor_mix_command(left: int, right: int) -> str:
+    return f"M,{clamp_motor_power(left)},{clamp_motor_power(right)}"
 
 def _parse_stun_servers(raw: str) -> list[str]:
     values = [part.strip() for part in raw.split(",") if part.strip()]
@@ -117,15 +117,6 @@ def split_ice_entries(entries: list[str]) -> tuple[list[str], list[str]]:
         else:
             stun.append(value)
     return stun, turn
-
-
-def speed_to_digit(val: int) -> str:
-    val = max(80, min(255, val))
-    return str(round((val - 80) / (255 - 80) * 9))
-
-
-DEFAULT_SPEED_DIGIT = speed_to_digit(DEFAULT_SPEED)
-ROTATION_SPEED_DIGIT = speed_to_digit(ROTATION_SPEED)
 # ══════════════════════════════════════════════════
 
 logging.basicConfig(
@@ -148,7 +139,6 @@ class ESP32Connection:
         self.lock = asyncio.Lock()
         self.last_seen: float = 0.0
         self.connected = False
-        self.current_speed_digit: Optional[str] = DEFAULT_SPEED_DIGIT
 
     async def send(self, cmd: str) -> bool:
         """Push a command to ESP32. Returns False if not connected."""
@@ -199,7 +189,6 @@ class ControllerManager:
         self.esp = esp
         self.ws: Optional[WebSocket] = None
         self.lock = asyncio.Lock()
-        self.drive_task: Optional[asyncio.Task] = None
         self.current_dir: Optional[str] = None
         self.last_seen: float = 0.0
         self._car_online = lambda: False
@@ -262,37 +251,14 @@ class ControllerManager:
             payload.update(extra)
         await self._safe_send(payload)
 
-    async def start_drive(self, direction: str):
+    async def set_drive_mix(self, left: int, right: int, label: Optional[str] = None) -> bool:
         await self.stop_drive(send_stop=False)
-        self.current_dir = direction
-
-        async def loop():
-            try:
-                while True:
-                    sent = await self.esp.send(direction)
-                    if not sent:
-                        await self.send_error("esp_offline")
-                        await self.send_status()
-                        break
-                    await asyncio.sleep(DRIVE_INTERVAL)
-            except asyncio.CancelledError:
-                raise
-            finally:
-                if self.current_dir == direction:
-                    self.current_dir = None
-                    await self.send_status()
-                if self.drive_task is asyncio.current_task():
-                    self.drive_task = None
-
-        self.drive_task = asyncio.create_task(loop(), name=f"drive:{direction}")
+        sent = await self.esp.send(format_motor_mix_command(left, right))
+        if sent:
+            self.current_dir = label or f"{clamp_motor_power(left)}/{clamp_motor_power(right)}"
+        return sent
 
     async def stop_drive(self, send_stop: bool = True) -> bool:
-        task = self.drive_task
-        self.drive_task = None
-        if task:
-            task.cancel()
-            with suppress(asyncio.CancelledError):
-                await task
         self.current_dir = None
         delivered = not send_stop or self.esp.connected
         if send_stop and self.esp.connected:
@@ -305,12 +271,6 @@ class ControllerManager:
     async def handle_esp_drop(self):
         await self.stop_drive(send_stop=False)
         await self.send_status()
-
-    async def ensure_default_speed(self):
-        if self.esp.current_speed_digit != DEFAULT_SPEED_DIGIT and self.esp.connected:
-            sent = await self.esp.send(DEFAULT_SPEED_DIGIT)
-            if sent:
-                self.esp.current_speed_digit = DEFAULT_SPEED_DIGIT
 
     async def _safe_send(self, payload: dict, ws: Optional[WebSocket] = None):
         target = ws or self.ws
@@ -426,37 +386,6 @@ def _read(name: str) -> str:
     return path.read_text(encoding="utf-8")
 
 
-class MoveCommand(BaseModel):
-    dir: str
-
-    @field_validator("dir")
-    @classmethod
-    def upper_trim(cls, v: str):
-        return v.strip().upper()
-
-
-class RotateCommand(BaseModel):
-    dir: str
-    deg: int
-
-    @field_validator("dir")
-    @classmethod
-    def validate_dir(cls, v: str):
-        vv = v.strip().upper()
-        if vv not in ("L", "R"):
-            raise ValueError("dir must be L or R")
-        return vv
-
-
-class SpeedCommand(BaseModel):
-    val: int = DEFAULT_SPEED
-
-    @field_validator("val")
-    @classmethod
-    def clamp(cls, v: int):
-        return clamp_manual_speed(v)
-
-
 @app.get("/controller", response_class=HTMLResponse)
 async def controller_page():
     return HTMLResponse(_read("controller.html"))
@@ -477,8 +406,6 @@ async def car_page():
 async def esp_endpoint(ws: WebSocket):
     await ws.accept()
     await esp32.register(ws)
-    esp32.current_speed_digit = DEFAULT_SPEED_DIGIT
-    await controller.ensure_default_speed()
     await controller.send_status()
     log.info("✅ ESP32 connected")
 
@@ -555,29 +482,6 @@ async def controller_endpoint(ws: WebSocket):
                 await controller.send_ack("hello", "ok", version=msg.get("version"))
                 continue
 
-            if msg_type == "drive":
-                direction = str(msg.get("dir", "")).upper()
-                if direction not in VALID_DIRS:
-                    await controller.send_ack("drive", "error", reason="bad_dir")
-                    continue
-                if direction == "S":
-                    delivered = await controller.stop_drive()
-                    status = "ok" if delivered else "error"
-                    await controller.send_ack("stop", status, delivered=delivered)
-                    await controller.send_status()
-                    continue
-                if not esp32.connected:
-                    await controller.send_ack("drive", "error", reason="esp_offline")
-                    continue
-                immediate = await esp32.send(direction)
-                if not immediate:
-                    await controller.send_ack("drive", "error", reason="esp_offline")
-                    continue
-                await controller.start_drive(direction)
-                await controller.send_ack("drive", "ok", dir=direction)
-                await controller.send_status()
-                continue
-
             if msg_type == "stop":
                 delivered = await controller.stop_drive()
                 status = "ok" if delivered else "error"
@@ -585,19 +489,29 @@ async def controller_endpoint(ws: WebSocket):
                 await controller.send_status()
                 continue
 
-            if msg_type == "speed":
-                val = msg.get("value")
-                if not isinstance(val, (int, float)):
-                    await controller.send_ack("speed", "error", reason="bad_value")
+            if msg_type == "drive_analog":
+                left = msg.get("left")
+                right = msg.get("right")
+                if not isinstance(left, (int, float)) or not isinstance(right, (int, float)):
+                    await controller.send_ack("drive_analog", "error", reason="bad_value")
                     continue
-                clamped_value = clamp_manual_speed(val)
-                digit = speed_to_digit(clamped_value)
-                sent = await esp32.send(digit)
+                if not esp32.connected:
+                    await controller.send_ack("drive_analog", "error", reason="esp_offline")
+                    continue
+                clamped_left = clamp_motor_power(round(left))
+                clamped_right = clamp_motor_power(round(right))
+                label = str(msg.get("label") or "").strip().upper() or None
+                sent = await controller.set_drive_mix(clamped_left, clamped_right, label=label)
                 if not sent:
-                    await controller.send_ack("speed", "error", reason="esp_offline")
+                    await controller.send_ack("drive_analog", "error", reason="esp_offline")
                     continue
-                esp32.current_speed_digit = digit
-                await controller.send_ack("speed", "ok", value=clamped_value)
+                await controller.send_ack(
+                    "drive_analog",
+                    "ok",
+                    left=clamped_left,
+                    right=clamped_right,
+                    label=label,
+                )
                 await controller.send_status()
                 continue
 
@@ -617,79 +531,6 @@ async def controller_endpoint(ws: WebSocket):
             await status_task
         await controller.detach(ws)
         await controller.send_status()
-
-
-# ──────────────────────────────────────────────────
-#  CONTROL ENDPOINTS
-#  Browser calls these; FastAPI pushes to ESP32 async
-# ──────────────────────────────────────────────────
-VALID_DIRS = {"F", "B", "L", "R", "S"}
-ROTATION_TIMES = {
-    15: 0.25,
-    45: 0.45,
-    60: 0.75,
-    90: 1
-}
-@app.post("/move")
-async def move(cmd: MoveCommand = Body(...)):
-    d = cmd.dir
-    if d not in VALID_DIRS:
-        return JSONResponse({"error": "bad dir"}, status_code=400)
-    if not esp32.connected:
-        return JSONResponse({"error": "ESP32 not connected"}, status_code=503)
-    await controller.stop_drive(send_stop=False)
-    sent = await esp32.send(d)
-    await controller.send_status()
-    if sent:
-        return {"ok": True, "cmd": d}
-    return JSONResponse({"error": "send failed"}, status_code=502)
-
-@app.post("/rotate")
-async def rotate(cmd: RotateCommand = Body(...)):
-    d = cmd.dir
-    deg = cmd.deg
-    if not esp32.connected:
-        return JSONResponse({"error": "ESP32 Offline"}, status_code=503)
-
-    await controller.stop_drive()
-    # Get the specific timing you mapped for this degree
-    duration = ROTATION_TIMES.get(deg, 0.45)
-    
-    log.info(f"Rotating {d} for {deg}° ({duration}s)")
-    previous_speed = esp32.current_speed_digit or DEFAULT_SPEED_DIGIT
-    if previous_speed != ROTATION_SPEED_DIGIT:
-        speed_sent = await esp32.send(ROTATION_SPEED_DIGIT)
-        if not speed_sent:
-            return JSONResponse({"error": "speed set failed"}, status_code=502)
-        esp32.current_speed_digit = ROTATION_SPEED_DIGIT
-    started = await esp32.send(d)  # Start motors
-    if not started:
-        return JSONResponse({"error": "start failed"}, status_code=502)
-    stop_ok = True
-    try:
-        await asyncio.sleep(duration) # Wait the exact time
-    finally:
-        stop_ok = await esp32.send("S")          # Stop motors
-        if not stop_ok:
-            log.warning("Failed to send stop command after rotation")
-        if previous_speed != ROTATION_SPEED_DIGIT and esp32.connected:
-            restored = await esp32.send(previous_speed)
-            if restored:
-                esp32.current_speed_digit = previous_speed
-            else:
-                log.warning("Failed to restore previous speed after rotation")
-    await controller.send_status()
-    return {"ok": True, "deg": deg, "duration": duration, "stop_confirmed": stop_ok}
-@app.post("/speed")
-async def speed(cmd: SpeedCommand = Body(...)):
-    val = clamp_manual_speed(cmd.val)
-    digit = speed_to_digit(val)
-    sent = await esp32.send(digit)
-    if not sent:
-        return JSONResponse({"error": "ESP32 not connected"}, status_code=503)
-    esp32.current_speed_digit = digit
-    await controller.send_status()
-    return {"ok": True, "speed": val, "cmd": digit}
 
 
 # ──────────────────────────────────────────────────

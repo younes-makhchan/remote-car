@@ -3,17 +3,11 @@
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   Connection: ESP32 acts as WebSocket CLIENT.
   It connects to FastAPI on your laptop and stays
-  connected permanently. Commands arrive as single
-  chars over the persistent socket — no HTTP
-  handshake overhead per command.
+  connected permanently.
 
   Protocol (text frames):
-    FastAPI → ESP32: "F" forward
-                    "B" backward
-                    "L" left
-                    "R" right
+    FastAPI → ESP32: "M,left,right" mixed motor PWM (-255..255 each)
                     "S" stop
-                    "0"–"9" speed (0=min 80pwm, 9=max 255pwm)
     ESP32 → FastAPI: "heartbeat" every 10s (keepalive)
 
   Dependencies (platformio.ini):
@@ -24,6 +18,7 @@
 */
 
 #include <Arduino.h>
+#include <cstring>
 #include <WiFi.h>
 #include <WebSocketsClient.h>   // links2004/WebSockets
 
@@ -44,46 +39,71 @@ const int enA = 5,  enB = 23;
 const int IN1 = 22, IN2 = 21, IN3 = 19, IN4 = 18;
 const int LED = 2;
 
-// Speed table: digits 0-9 → PWM 80-255
-const int SPEED_TABLE[10] = { 80, 97, 114, 131, 148, 165, 182, 199, 226, 255 };
-int currentSpeed = 200;   // default
-int turnSpeed = 220; // Fixed turning speed for better control
 WebSocketsClient wsClient;
 bool wsConnected = false;
 unsigned long lastHeartbeatMs = 0;
 constexpr unsigned long HEARTBEAT_INTERVAL_MS = 10000;
+constexpr int MOTOR_PWM_MAX = 255;
 
 // ──────────────────────────────────────────────────
 //  MOTOR HELPERS
 // ──────────────────────────────────────────────────
+int clampMotorPwm(int value) {
+    if (value > MOTOR_PWM_MAX) return MOTOR_PWM_MAX;
+    if (value < -MOTOR_PWM_MAX) return -MOTOR_PWM_MAX;
+    return value;
+}
+
+void setLeftMotor(int speed) {
+    int clamped = clampMotorPwm(speed);
+    int pwm = abs(clamped);
+    if (clamped > 0) {
+        digitalWrite(IN1, HIGH);
+        digitalWrite(IN2, LOW);
+    } else if (clamped < 0) {
+        digitalWrite(IN1, LOW);
+        digitalWrite(IN2, HIGH);
+    } else {
+        digitalWrite(IN1, LOW);
+        digitalWrite(IN2, LOW);
+    }
+    ledcWrite(enA, pwm);
+}
+
+void setRightMotor(int speed) {
+    int clamped = clampMotorPwm(speed);
+    int pwm = abs(clamped);
+    if (clamped > 0) {
+        digitalWrite(IN3, LOW);
+        digitalWrite(IN4, HIGH);
+    } else if (clamped < 0) {
+        digitalWrite(IN3, HIGH);
+        digitalWrite(IN4, LOW);
+    } else {
+        digitalWrite(IN3, LOW);
+        digitalWrite(IN4, LOW);
+    }
+    ledcWrite(enB, pwm);
+}
+
+void driveMotors(int leftSpeed, int rightSpeed) {
+    setLeftMotor(leftSpeed);
+    setRightMotor(rightSpeed);
+}
+
 void motorStop() {
     digitalWrite(IN1, LOW); digitalWrite(IN2, LOW);
     digitalWrite(IN3, LOW); digitalWrite(IN4, LOW);
     ledcWrite(enA, 0);      ledcWrite(enB, 0);
 }
 
-void motorForward() {
-    digitalWrite(IN1, HIGH); digitalWrite(IN2, LOW);
-    digitalWrite(IN3, LOW);  digitalWrite(IN4, HIGH);
-    ledcWrite(enA, currentSpeed); ledcWrite(enB, currentSpeed);
-}
-
-void motorBackward() {
-    digitalWrite(IN1, LOW);  digitalWrite(IN2, HIGH);
-    digitalWrite(IN3, HIGH); digitalWrite(IN4, LOW);
-    ledcWrite(enA, currentSpeed); ledcWrite(enB, currentSpeed);
-}
-
-void motorRight() {
-    digitalWrite(IN1, HIGH); digitalWrite(IN2, LOW);
-    digitalWrite(IN3, HIGH); digitalWrite(IN4, LOW);
-    ledcWrite(enA, turnSpeed); ledcWrite(enB, turnSpeed);
-}
-
-void motorLeft() {
-    digitalWrite(IN1, LOW);  digitalWrite(IN2, HIGH);
-    digitalWrite(IN3, LOW);  digitalWrite(IN4, HIGH);
-    ledcWrite(enA, turnSpeed); ledcWrite(enB, turnSpeed);
+bool parseMotorMixCommand(const uint8_t* payload, size_t length, int& left, int& right) {
+    if (length < 5 || payload[0] != 'M') return false;
+    char buffer[32];
+    size_t copyLen = length < sizeof(buffer) - 1 ? length : sizeof(buffer) - 1;
+    memcpy(buffer, payload, copyLen);
+    buffer[copyLen] = '\0';
+    return sscanf(buffer, "M,%d,%d", &left, &right) == 2;
 }
 
 // ──────────────────────────────────────────────────
@@ -115,18 +135,23 @@ void onWebSocketEvent(WStype_t type, uint8_t* payload, size_t length) {
             char cmd = (char)payload[0];
             Serial.printf("[CMD] %c\n", cmd);
 
+            if (cmd == 'M') {
+                int left = 0;
+                int right = 0;
+                if (parseMotorMixCommand(payload, length, left, right)) {
+                    left = clampMotorPwm(left);
+                    right = clampMotorPwm(right);
+                    Serial.printf("[MOTOR MIX] left=%d right=%d\n", left, right);
+                    driveMotors(left, right);
+                } else {
+                    Serial.println("[MOTOR MIX] parse error");
+                }
+                break;
+            }
+
             switch (cmd) {
-                case 'F': motorForward();  break;
-                case 'B': motorBackward(); break;
-                case 'L': motorLeft();     break;
-                case 'R': motorRight();    break;
                 case 'S': motorStop();     break;
                 default:
-                    // Speed digit 0-9
-                    if (cmd >= '0' && cmd <= '9') {
-                        currentSpeed = SPEED_TABLE[cmd - '0'];
-                        Serial.printf("[SPEED] %d\n", currentSpeed);
-                    }
                     break;
             }
             break;
