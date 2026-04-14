@@ -1,228 +1,250 @@
 /*
-  main.cpp — ESP32 Robot Car
-  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  Connection: ESP32 acts as WebSocket CLIENT.
-  It connects to FastAPI on your laptop and stays
-  connected permanently.
+  main.cpp — car receiver firmware
 
-  Protocol (text frames):
-    FastAPI → ESP32: "M,left,right" mixed motor PWM (-255..255 each)
-                    "S" stop
-    ESP32 → FastAPI: "heartbeat" every 10s (keepalive)
-
-  Dependencies (platformio.ini):
-    lib_deps =
-      ESP Async WebServer          ← still used for WiFi AP fallback (optional)
-      links2004/WebSockets @ ^2.4.1  ← WebSocketsClient
-  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  The car ESP32 joins the hand controller's SoftAP, connects to its TCP server,
+  and applies direct motor mix commands:
+    D,left,right\n
+    S\n
 */
 
 #include <Arduino.h>
-#include <cstring>
 #include <WiFi.h>
-#include <WebSocketsClient.h>   // links2004/WebSockets
 
-// ══════════════════════════════════════════════════
-//  ★  EDIT THESE  ★
-// ══════════════════════════════════════════════════
-const char* WIFI_SSID     = "iphone";
-const char* WIFI_PASSWORD = "123456789";
+// Hand controller SoftAP configuration.
+const char* WIFI_SSID = "HandCar-AP";
+const char* WIFI_PASSWORD = "handdrive250";
+constexpr uint16_t CONTROL_PORT = 4242;
 
-// Public domain exposed by your reverse proxy / TLS terminator.
-const char* FLASK_HOST    = "www.example.com";
-const uint16_t FLASK_PORT = 443;
-const char*  FLASK_PATH   = "/esp";    // matches @app.websocket("/esp") in app.py
-// ══════════════════════════════════════════════════
-
-// Motor pins
-const int enA = 5,  enB = 23;
-const int IN1 = 22, IN2 = 21, IN3 = 19, IN4 = 18;
+// Motor pins.
+const int enA = 5;
+const int enB = 23;
+const int IN1 = 22;
+const int IN2 = 21;
+const int IN3 = 19;
+const int IN4 = 18;
 const int LED = 2;
 
-WebSocketsClient wsClient;
-bool wsConnected = false;
-unsigned long lastHeartbeatMs = 0;
-constexpr unsigned long HEARTBEAT_INTERVAL_MS = 10000;
-constexpr int MOTOR_PWM_MAX = 255;
+constexpr int MOTOR_PWM_LIMIT = 250;
+constexpr unsigned long WIFI_RETRY_MS = 5000;
+constexpr unsigned long TCP_RETRY_MS = 1500;
+constexpr unsigned long COMMAND_TIMEOUT_MS = 700;
 
-// ──────────────────────────────────────────────────
-//  MOTOR HELPERS
-// ──────────────────────────────────────────────────
+WiFiClient controlClient;
+String inputBuffer;
+unsigned long lastWiFiAttemptMs = 0;
+unsigned long lastTcpAttemptMs = 0;
+unsigned long lastCommandMs = 0;
+
 int clampMotorPwm(int value) {
-    if (value > MOTOR_PWM_MAX) return MOTOR_PWM_MAX;
-    if (value < -MOTOR_PWM_MAX) return -MOTOR_PWM_MAX;
-    return value;
+  if (value > MOTOR_PWM_LIMIT) return MOTOR_PWM_LIMIT;
+  if (value < -MOTOR_PWM_LIMIT) return -MOTOR_PWM_LIMIT;
+  return value;
 }
 
 void setLeftMotor(int speed) {
-    int clamped = clampMotorPwm(speed);
-    int pwm = abs(clamped);
-    if (clamped > 0) {
-        digitalWrite(IN1, HIGH);
-        digitalWrite(IN2, LOW);
-    } else if (clamped < 0) {
-        digitalWrite(IN1, LOW);
-        digitalWrite(IN2, HIGH);
-    } else {
-        digitalWrite(IN1, LOW);
-        digitalWrite(IN2, LOW);
-    }
-    ledcWrite(enA, pwm);
+  const int clamped = clampMotorPwm(speed);
+  const int pwm = abs(clamped);
+  if (clamped > 0) {
+    digitalWrite(IN1, HIGH);
+    digitalWrite(IN2, LOW);
+  } else if (clamped < 0) {
+    digitalWrite(IN1, LOW);
+    digitalWrite(IN2, HIGH);
+  } else {
+    digitalWrite(IN1, LOW);
+    digitalWrite(IN2, LOW);
+  }
+  ledcWrite(enA, pwm);
 }
 
 void setRightMotor(int speed) {
-    int clamped = clampMotorPwm(speed);
-    int pwm = abs(clamped);
-    if (clamped > 0) {
-        digitalWrite(IN3, LOW);
-        digitalWrite(IN4, HIGH);
-    } else if (clamped < 0) {
-        digitalWrite(IN3, HIGH);
-        digitalWrite(IN4, LOW);
-    } else {
-        digitalWrite(IN3, LOW);
-        digitalWrite(IN4, LOW);
-    }
-    ledcWrite(enB, pwm);
+  const int clamped = clampMotorPwm(speed);
+  const int pwm = abs(clamped);
+  if (clamped > 0) {
+    digitalWrite(IN3, LOW);
+    digitalWrite(IN4, HIGH);
+  } else if (clamped < 0) {
+    digitalWrite(IN3, HIGH);
+    digitalWrite(IN4, LOW);
+  } else {
+    digitalWrite(IN3, LOW);
+    digitalWrite(IN4, LOW);
+  }
+  ledcWrite(enB, pwm);
 }
 
 void driveMotors(int leftSpeed, int rightSpeed) {
-    setLeftMotor(leftSpeed);
-    setRightMotor(rightSpeed);
+  setLeftMotor(leftSpeed);
+  setRightMotor(rightSpeed);
 }
 
 void motorStop() {
-    digitalWrite(IN1, LOW); digitalWrite(IN2, LOW);
-    digitalWrite(IN3, LOW); digitalWrite(IN4, LOW);
-    ledcWrite(enA, 0);      ledcWrite(enB, 0);
+  digitalWrite(IN1, LOW);
+  digitalWrite(IN2, LOW);
+  digitalWrite(IN3, LOW);
+  digitalWrite(IN4, LOW);
+  ledcWrite(enA, 0);
+  ledcWrite(enB, 0);
 }
 
-bool parseMotorMixCommand(const uint8_t* payload, size_t length, int& left, int& right) {
-    if (length < 5 || payload[0] != 'M') return false;
-    char buffer[32];
-    size_t copyLen = length < sizeof(buffer) - 1 ? length : sizeof(buffer) - 1;
-    memcpy(buffer, payload, copyLen);
-    buffer[copyLen] = '\0';
-    return sscanf(buffer, "M,%d,%d", &left, &right) == 2;
+bool parseDriveCommand(const String& line, int& left, int& right) {
+  if (!line.startsWith("D,")) return false;
+  const int firstComma = line.indexOf(',');
+  const int secondComma = line.indexOf(',', firstComma + 1);
+  if (firstComma < 0 || secondComma < 0) return false;
+
+  const String leftToken = line.substring(firstComma + 1, secondComma);
+  const String rightToken = line.substring(secondComma + 1);
+  if (!leftToken.length() || !rightToken.length()) return false;
+
+  left = leftToken.toInt();
+  right = rightToken.toInt();
+
+  const String normalized = "D," + String(left) + "," + String(right);
+  return normalized == line;
 }
 
-// ──────────────────────────────────────────────────
-//  WEBSOCKET EVENT HANDLER
-//  Called by the library on every event.
-//  Runs in the main loop — no RTOS needed.
-// ──────────────────────────────────────────────────
-void onWebSocketEvent(WStype_t type, uint8_t* payload, size_t length) {
-    switch (type) {
+void handleCommandLine(String line) {
+  line.trim();
+  if (!line.length()) return;
 
-        case WStype_DISCONNECTED:
-            Serial.println("[WS] Disconnected — will auto-reconnect");
-            wsConnected = false;
-            digitalWrite(LED, LOW);
-            motorStop();   // safety: stop motors on disconnect
-            break;
-
-        case WStype_CONNECTED:
-            wsConnected = true;
-            lastHeartbeatMs = millis();
-            Serial.printf("[WS] Connected to wss://%s:%d%s\n",
-                          FLASK_HOST, FLASK_PORT, FLASK_PATH);
-            digitalWrite(LED, HIGH);
-            wsClient.sendTXT("heartbeat");
-            break;
-
-        case WStype_TEXT: {
-            if (length == 0) break;
-            char cmd = (char)payload[0];
-            Serial.printf("[CMD] %c\n", cmd);
-
-            if (cmd == 'M') {
-                int left = 0;
-                int right = 0;
-                if (parseMotorMixCommand(payload, length, left, right)) {
-                    left = clampMotorPwm(left);
-                    right = clampMotorPwm(right);
-                    Serial.printf("[MOTOR MIX] left=%d right=%d\n", left, right);
-                    driveMotors(left, right);
-                } else {
-                    Serial.println("[MOTOR MIX] parse error");
-                }
-                break;
-            }
-
-            switch (cmd) {
-                case 'S': motorStop();     break;
-                default:
-                    break;
-            }
-            break;
-        }
-
-        case WStype_PING:
-        case WStype_PONG:
-            // handled by library automatically
-            break;
-
-        default:
-            break;
-    }
-}
-
-// ──────────────────────────────────────────────────
-//  SETUP
-// ──────────────────────────────────────────────────
-void setup() {
-    Serial.begin(115200);
-
-    // Motor pins
-    pinMode(LED, OUTPUT);
-    pinMode(IN1, OUTPUT); pinMode(IN2, OUTPUT);
-    pinMode(IN3, OUTPUT); pinMode(IN4, OUTPUT);
+  if (line == "S") {
+    Serial.println("[CTRL] stop");
     motorStop();
+    lastCommandMs = millis();
+    return;
+  }
 
-    // PWM (ESP32 core v3+)
-    ledcAttach(enA, 5000, 8);
-    ledcAttach(enB, 5000, 8);
+  int left = 0;
+  int right = 0;
+  if (!parseDriveCommand(line, left, right)) {
+    Serial.printf("[CTRL] invalid payload: %s\n", line.c_str());
+    motorStop();
+    lastCommandMs = 0;
+    return;
+  }
 
-    // ── WiFi ──────────────────────────────────────
-    Serial.printf("Connecting to %s", WIFI_SSID);
-    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-    while (WiFi.status() != WL_CONNECTED) {
-        digitalWrite(LED, !digitalRead(LED));
-        delay(300);
-        Serial.print(".");
-    }
-    digitalWrite(LED, HIGH);
-    Serial.printf("\nWiFi connected — IP: %s\n", WiFi.localIP().toString().c_str());
-
-    // ── WebSocket client ──────────────────────────
-    // Connect to FastAPI through the HTTPS reverse proxy.
-    wsClient.beginSSL(FLASK_HOST, FLASK_PORT, FLASK_PATH);
-    wsClient.onEvent(onWebSocketEvent);
-    wsClient.setReconnectInterval(2000);     // retry every 2s if disconnected
+  left = clampMotorPwm(left);
+  right = clampMotorPwm(right);
+  Serial.printf("[CTRL] drive left=%d right=%d\n", left, right);
+  driveMotors(left, right);
+  lastCommandMs = millis();
 }
 
-// ──────────────────────────────────────────────────
-//  LOOP
-// ──────────────────────────────────────────────────
+void processIncomingCommands() {
+  while (controlClient.connected() && controlClient.available()) {
+    const char ch = static_cast<char>(controlClient.read());
+    if (ch == '\r') continue;
+    if (ch == '\n') {
+      handleCommandLine(inputBuffer);
+      inputBuffer = "";
+      continue;
+    }
+    if (inputBuffer.length() >= 63) {
+      Serial.println("[CTRL] buffer overflow, stopping");
+      inputBuffer = "";
+      motorStop();
+      lastCommandMs = 0;
+      continue;
+    }
+    inputBuffer += ch;
+  }
+}
+
+void disconnectControlClient() {
+  if (controlClient.connected()) {
+    controlClient.stop();
+  }
+  inputBuffer = "";
+  lastCommandMs = 0;
+  motorStop();
+}
+
+void ensureWiFiConnected() {
+  if (WiFi.status() == WL_CONNECTED) return;
+
+  const unsigned long now = millis();
+  if (now - lastWiFiAttemptMs < WIFI_RETRY_MS) return;
+  lastWiFiAttemptMs = now;
+
+  Serial.printf("[WiFi] connecting to %s\n", WIFI_SSID);
+  WiFi.disconnect(true, true);
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+}
+
+void ensureTcpConnected() {
+  if (WiFi.status() != WL_CONNECTED) {
+    disconnectControlClient();
+    return;
+  }
+  if (controlClient.connected()) return;
+
+  const unsigned long now = millis();
+  if (now - lastTcpAttemptMs < TCP_RETRY_MS) return;
+  lastTcpAttemptMs = now;
+
+  disconnectControlClient();
+  Serial.println("[TCP] connecting to hand controller");
+  if (controlClient.connect(WiFi.gatewayIP(), CONTROL_PORT)) {
+    controlClient.setNoDelay(true);
+    inputBuffer = "";
+    lastCommandMs = millis();
+    Serial.printf("[TCP] connected to %s:%u\n", WiFi.gatewayIP().toString().c_str(), CONTROL_PORT);
+  } else {
+    Serial.println("[TCP] connect failed");
+  }
+}
+
+void updateStatusLed() {
+  if (controlClient.connected()) {
+    digitalWrite(LED, HIGH);
+    return;
+  }
+
+  if (WiFi.status() == WL_CONNECTED) {
+    digitalWrite(LED, (millis() / 250) % 2);
+    return;
+  }
+
+  digitalWrite(LED, (millis() / 120) % 2);
+}
+
+void setup() {
+  Serial.begin(115200);
+
+  pinMode(LED, OUTPUT);
+  pinMode(IN1, OUTPUT);
+  pinMode(IN2, OUTPUT);
+  pinMode(IN3, OUTPUT);
+  pinMode(IN4, OUTPUT);
+  motorStop();
+
+  ledcAttach(enA, 5000, 8);
+  ledcAttach(enB, 5000, 8);
+
+  WiFi.mode(WIFI_STA);
+  WiFi.setSleep(false);
+  ensureWiFiConnected();
+}
+
 void loop() {
-    // The library handles reconnects and event dispatch.
-    // App-level heartbeats are sent explicitly below.
-    wsClient.loop();
+  ensureWiFiConnected();
+  ensureTcpConnected();
 
-    if (wsConnected) {
-        unsigned long now = millis();
-        if (now - lastHeartbeatMs >= HEARTBEAT_INTERVAL_MS) {
-            wsClient.sendTXT("heartbeat");
-            lastHeartbeatMs = now;
-        }
-    }
+  if (WiFi.status() != WL_CONNECTED) {
+    disconnectControlClient();
+  } else if (controlClient.connected()) {
+    processIncomingCommands();
+  } else {
+    motorStop();
+  }
 
-    // WiFi watchdog — reconnect if dropped
-    if (WiFi.status() != WL_CONNECTED) {
-        digitalWrite(LED, LOW);
-        Serial.println("[WiFi] Lost — reconnecting…");
-        WiFi.reconnect();
-        wsConnected = false;
-        delay(5000);
-    }
+  if (controlClient.connected() && lastCommandMs > 0 && millis() - lastCommandMs > COMMAND_TIMEOUT_MS) {
+    Serial.println("[SAFE] command timeout");
+    disconnectControlClient();
+  }
+
+  updateStatusLed();
+  delay(10);
 }
