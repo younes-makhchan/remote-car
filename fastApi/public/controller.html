@@ -177,224 +177,231 @@
     /* ─── Bottom controls ─── */
     .hud-bottom {
       display: flex;
-      justify-content: space-between;
+      justify-content: flex-start;
       align-items: flex-end;
-      gap: 16px;
+      gap: 12px;
       pointer-events: none;
+      padding-left: max(10px, env(safe-area-inset-left));
+      padding-bottom: max(8px, env(safe-area-inset-bottom));
     }
 
-    /* ─── Shared panel ─── */
-    .ctrl-panel {
-      background: none;
-      border: none;
-      border-radius: 0;
-      backdrop-filter: none;
-      padding: 0;
+    .control-stack {
+      width: auto;
       display: flex;
-      flex-direction: column;
+      flex-direction: row;
       gap: 12px;
       pointer-events: auto;
-      width: calc(clamp(64px, 11vw, 80px) * 2 + 10px);
-    }
-
-    /* ─── Drive buttons (Push / Back) ─── */
-    .drive-btn {
-      width: clamp(64px, 11vw, 80px);
-      height: clamp(64px, 11vw, 80px);
-      border-radius: 20px;
-      background: rgba(8, 16, 30, 0.65);
-      border: 1px solid rgba(56, 189, 248, 0.35);
-      color: var(--accent);
-      font-family: 'JetBrains Mono', monospace;
-      font-size: clamp(22px, 4vw, 30px);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      transition: transform 0.12s, box-shadow 0.15s, background 0.15s;
-      box-shadow: 0 8px 24px rgba(4, 8, 16, 0.35);
-      cursor: pointer;
-      text-shadow: 0 0 12px rgba(56, 189, 248, 0.9), 0 0 24px rgba(56, 189, 248, 0.5);
-    }
-    .drive-btn.active {
-      box-shadow: 0 0 18px rgba(56, 189, 248, 0.45);
-      background: rgba(56, 189, 248, 0.12);
-    }
-    .drive-btn.disabled { opacity: 0.3; pointer-events: none; }
-    .drive-btn:active {
-      transform: scale(0.94);
-      box-shadow: 0 0 18px rgba(56, 189, 248, 0.45);
-      background: rgba(56, 189, 248, 0.12);
+      margin: 0;
+      align-items: flex-end;
     }
 
     /* ─── Speed group ─── */
     .speed-group {
-      background: rgba(8, 13, 22, 0.5);
-      border: 1px solid rgba(56, 189, 248, 0.12);
-      border-radius: 16px;
-      padding: 12px 14px;
+      background: rgba(8, 13, 22, 0.32);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 22px;
+      padding: 12px 8px 14px;
       display: flex;
       flex-direction: column;
-      gap: 8px;
-      backdrop-filter: blur(14px);
-      width: 100%;
+      gap: 10px;
+      align-items: center;
+      backdrop-filter: blur(10px);
+      width: 58px;
+      min-height: 210px;
+      box-shadow: 0 12px 28px rgba(2, 6, 23, 0.24);
     }
     .speed-header {
       display: flex;
-      justify-content: space-between;
       align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 6px;
       font-size: 9px;
-      letter-spacing: 0.26em;
+      letter-spacing: 0.18em;
       text-transform: uppercase;
       color: var(--text-muted);
+      text-align: center;
     }
     #speed-val {
       font-family: 'Orbitron', sans-serif;
-      font-size: clamp(18px, 3vw, 22px);
-      color: #c084fc;
-      letter-spacing: 0.12em;
+      font-size: 14px;
+      color: rgba(255, 255, 255, 0.92);
+      letter-spacing: 0.08em;
+    }
+    .speed-slider-wrap {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      flex: 1;
     }
     input[type=range] {
       -webkit-appearance: none;
-      width: 100%;
+      width: 140px;
       background: transparent;
-      touch-action: pan-x;
+      touch-action: none;
       cursor: pointer;
-      padding: 8px 0;
+      padding: 0;
       --speed-progress: 66.7%;
+      transform: rotate(-90deg);
+      transform-origin: center;
     }
     input[type=range]::-webkit-slider-runnable-track {
-      height: 8px;
+      height: 6px;
       background:
-        linear-gradient(90deg, rgba(56, 189, 248, 0.95) 0, rgba(56, 189, 248, 0.95) var(--speed-progress), rgba(15, 23, 42, 0.7) var(--speed-progress), rgba(15, 23, 42, 0.7) 100%);
+        linear-gradient(90deg, rgba(226, 232, 240, 0.86) 0, rgba(226, 232, 240, 0.86) var(--speed-progress), rgba(255, 255, 255, 0.16) var(--speed-progress), rgba(255, 255, 255, 0.16) 100%);
       border-radius: 999px;
-      border: 1px solid rgba(56, 189, 248, 0.2);
+      border: 1px solid rgba(255, 255, 255, 0.08);
     }
     input[type=range]::-webkit-slider-thumb {
       -webkit-appearance: none;
-      height: 22px; width: 22px;
+      height: 18px; width: 18px;
       border-radius: 50%;
-      background: var(--accent);
-      box-shadow: 0 0 10px rgba(56, 189, 248, 0.7);
-      margin-top: -8px;
-      border: 2px solid rgba(15, 23, 42, 0.9);
+      background: rgba(255, 255, 255, 0.95);
+      box-shadow: 0 0 10px rgba(255, 255, 255, 0.25);
+      margin-top: -7px;
+      border: 2px solid rgba(15, 23, 42, 0.75);
     }
     input[type=range]::-moz-range-track {
-      height: 8px;
-      background: rgba(15, 23, 42, 0.7);
+      height: 6px;
+      background: rgba(255, 255, 255, 0.16);
       border-radius: 999px;
     }
     input[type=range]::-moz-range-progress {
-      height: 8px;
-      background: rgba(56, 189, 248, 0.95);
+      height: 6px;
+      background: rgba(226, 232, 240, 0.86);
       border-radius: 999px;
     }
     input[type=range]::-moz-range-thumb {
-      height: 22px; width: 22px;
+      height: 18px; width: 18px;
       border-radius: 50%;
-      background: var(--accent);
-      border: 2px solid rgba(15, 23, 42, 0.9);
-      box-shadow: 0 0 10px rgba(56, 189, 248, 0.7);
+      background: rgba(255, 255, 255, 0.95);
+      border: 2px solid rgba(15, 23, 42, 0.75);
+      box-shadow: 0 0 10px rgba(255, 255, 255, 0.25);
     }
 
-    /* ─── Rotation panel ─── */
-    .rot-buttons {
+    .joystick-card {
+      background: transparent;
+      border: none;
+      border-radius: 0;
+      padding: 0;
+      backdrop-filter: none;
       display: flex;
-      gap: 10px;
+      flex-direction: column;
+      gap: 8px;
+      align-items: center;
+      width: auto;
     }
-    .rot-btn {
-      flex: 1;
-      height: clamp(64px, 11vw, 80px);
-      border-radius: 20px;
-      background: rgba(8, 16, 30, 0.65);
-      border: 1px solid rgba(56, 189, 248, 0.35);
-      color: var(--accent);
-      font-size: clamp(22px, 4vw, 30px);
-      display: flex; align-items: center; justify-content: center;
-      cursor: pointer;
-      transition: transform 0.12s, box-shadow 0.15s, background 0.15s;
-      box-shadow: 0 8px 24px rgba(4, 8, 16, 0.35);
-      text-shadow: 0 0 12px rgba(56, 189, 248, 0.9), 0 0 24px rgba(56, 189, 248, 0.5);
-    }
-    .rot-btn:active {
-      transform: scale(0.94);
-      box-shadow: 0 0 18px rgba(56, 189, 248, 0.45);
-      background: rgba(56, 189, 248, 0.12);
-    }
-
-    /* ─── Step buttons ─── */
-    .step-grid {
-      display: grid;
-      grid-template-columns: repeat(4, clamp(34px, 6vw, 44px));
-      gap: 6px;
-      background: rgba(8, 13, 22, 0.5);
-      border: 1px solid rgba(56, 189, 248, 0.12);
-      border-radius: 16px;
-      padding: 8px;
-      backdrop-filter: blur(14px);
-      width: fit-content;
-    }
-    .step-lbl {
-      grid-column: span 2;
-      text-align: center;
+    .joystick-header {
+      width: auto;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
       font-size: 8px;
-      letter-spacing: 0.3em;
+      letter-spacing: 0.16em;
       text-transform: uppercase;
-      color: rgba(203, 213, 225, 0.45);
-      margin-bottom: 2px;
+      color: rgba(226, 232, 240, 0.64);
+      background: rgba(8, 13, 22, 0.26);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 999px;
+      padding: 4px 8px;
     }
-    .step-btn {
-      padding: 9px 8px;
-      border-radius: 12px;
+    .joystick-header span:first-child { display: none; }
+    #joystick-state {
+      color: rgba(255, 255, 255, 0.92);
+      font-family: 'Orbitron', sans-serif;
       font-size: 11px;
       letter-spacing: 0.14em;
-      font-family: 'JetBrains Mono', monospace;
-      background: rgba(15, 23, 42, 0.55);
-      color: rgba(226, 232, 240, 0.8);
-      border: 1px solid rgba(148, 163, 184, 0.2);
-      cursor: pointer;
-      transition: background 0.18s, color 0.18s, border-color 0.18s;
-      text-align: center;
     }
-    .step-btn.active {
-      background: rgba(56, 189, 248, 0.2);
-      color: var(--accent);
-      border-color: rgba(56, 189, 248, 0.4);
+    .joystick-shell {
+      position: relative;
+      width: min(28vw, 168px);
+      aspect-ratio: 1;
+      border-radius: 50%;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      background:
+        radial-gradient(circle at center, rgba(255, 255, 255, 0.12) 0, rgba(255, 255, 255, 0.05) 24%, rgba(15, 23, 42, 0.34) 70%, rgba(2, 6, 23, 0.44) 100%);
+      box-shadow: inset 0 0 30px rgba(255, 255, 255, 0.05), 0 12px 24px rgba(2, 6, 23, 0.18);
+      touch-action: none;
+      user-select: none;
+      cursor: grab;
     }
-    .step-btn:active { transform: scale(0.95); }
-
-    /* ─── Center STOP button ─── */
-    .stop-wrap {
-      display: flex;
-      align-items: flex-end;
-      justify-content: center;
+    .joystick-shell.disabled {
+      opacity: 0.35;
+      filter: saturate(0.3);
+      cursor: not-allowed;
+    }
+    .joystick-shell::before,
+    .joystick-shell::after {
+      content: '';
+      position: absolute;
+      inset: 50%;
+      background: rgba(148, 163, 184, 0.16);
+      transform: translate(-50%, -50%);
       pointer-events: none;
-      flex: 1;
-      padding-bottom: 4px;
     }
-    #stop-btn {
-      width: clamp(180px, 36vw, 280px);
-      height: clamp(58px, 10vh, 76px);
-      border-radius: 999px;
-      background: transparent;
-      border: 2px solid rgba(248, 113, 113, 0.7);
-      color: var(--danger);
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 14px;
-      font-weight: 700;
-      letter-spacing: 0.3em;
+    .joystick-shell::before {
+      width: 74%;
+      height: 1px;
+    }
+    .joystick-shell::after {
+      width: 1px;
+      height: 74%;
+    }
+    .joystick-ring {
+      position: absolute;
+      inset: 14%;
+      border-radius: 50%;
+      border: 1px dashed rgba(255, 255, 255, 0.1);
+      pointer-events: none;
+    }
+    .joystick-knob {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: 34%;
+      aspect-ratio: 1;
+      border-radius: 50%;
+      background: radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.92) 0, rgba(186, 230, 253, 0.72) 40%, rgba(15, 23, 42, 0.82) 100%);
+      border: 2px solid rgba(255, 255, 255, 0.08);
+      box-shadow: 0 0 18px rgba(255, 255, 255, 0.16), inset 0 0 18px rgba(255, 255, 255, 0.14);
+      transform: translate(-50%, -50%);
+      transition: transform 0.08s linear, box-shadow 0.12s ease;
+      pointer-events: none;
+    }
+    .joystick-shell.active .joystick-knob {
+      box-shadow: 0 0 24px rgba(255, 255, 255, 0.24), inset 0 0 18px rgba(255, 255, 255, 0.18);
+    }
+    .joystick-label {
+      position: absolute;
+      font-size: 8px;
+      letter-spacing: 0.14em;
       text-transform: uppercase;
-      pointer-events: auto;
-      cursor: pointer;
-      box-shadow: 0 0 16px rgba(248, 113, 113, 0.2), inset 0 0 12px rgba(248, 113, 113, 0.04);
-      text-shadow: 0 0 10px rgba(248, 113, 113, 0.6);
-      transition: transform 0.12s, box-shadow 0.15s, border-color 0.15s;
+      color: rgba(255, 255, 255, 0.42);
+      pointer-events: none;
     }
-    #stop-btn:active {
-      transform: scale(0.97) translateY(2px);
-      border-color: rgba(248, 113, 113, 1);
-      box-shadow: 0 0 24px rgba(248, 113, 113, 0.4);
+    .joystick-label.top { top: 12px; left: 50%; transform: translateX(-50%); }
+    .joystick-label.bottom { bottom: 12px; left: 50%; transform: translateX(-50%); }
+    .joystick-label.left { left: 12px; top: 50%; transform: translateY(-50%); }
+    .joystick-label.right { right: 12px; top: 50%; transform: translateY(-50%); }
+    .joystick-hint {
+      display: none;
     }
-    #stop-btn.disabled { opacity: 0.3; pointer-events: none; }
+    @media (max-width: 720px) {
+      .control-stack {
+        gap: 10px;
+      }
+      .joystick-shell {
+        width: min(31vw, 150px);
+      }
+      .speed-group {
+        width: 52px;
+        min-height: 188px;
+      }
+      input[type=range] {
+        width: 126px;
+      }
+    }
   </style>
 </head>
 <body>
@@ -432,42 +439,32 @@
   <!-- BOTTOM CONTROLS -->
   <div class="hud-bottom">
 
-    <!-- LEFT: Drive + Speed -->
-    <div style="display:flex;flex-direction:column;gap:12px;pointer-events:auto;">
-      <div style="display:flex;gap:10px;">
-        <button class="drive-btn" data-dir="F" type="button">▲</button>
-        <button class="drive-btn" data-dir="B" type="button">▼</button>
-      </div>
+    <div class="control-stack">
       <div class="speed-group">
         <div class="speed-header">
-          <span>Speed Limit</span>
+          <span>Speed</span>
           <span id="speed-val">240</span>
         </div>
-        <input type="range" id="speed-slider" min="220" max="250" value="240">
-      </div>
-    </div>
-
-    <!-- CENTER: STOP -->
-    <div class="stop-wrap">
-      <button id="stop-btn" type="button">STOP</button>
-    </div>
-
-    <!-- RIGHT: Rotation -->
-    <div style="display:flex;flex-direction:column;gap:12px;pointer-events:auto;align-items:flex-end;">
-      <div class="ctrl-panel">
-        <div class="rot-buttons">
-          <button class="rot-btn" id="turn-L" type="button">↺</button>
-          <button class="rot-btn" id="turn-R" type="button">↻</button>
+        <div class="speed-slider-wrap">
+          <input type="range" id="speed-slider" min="220" max="250" value="240">
         </div>
       </div>
-      <div class="step-grid">
-        <button class="step-btn" onclick="setStep(15)">15°</button>
-        <button class="step-btn" onclick="setStep(45)">45°</button>
-        <button class="step-btn" onclick="setStep(60)">60°</button>
-        <button class="step-btn" onclick="setStep(90)">90°</button>
+      <div class="joystick-card">
+        <div class="joystick-header">
+          <span>Drive Stick</span>
+          <span id="joystick-state">IDLE</span>
+        </div>
+        <div class="joystick-shell" id="joystick" aria-label="Drive joystick" role="application">
+          <div class="joystick-ring"></div>
+          <span class="joystick-label top">F</span>
+          <span class="joystick-label right">R</span>
+          <span class="joystick-label bottom">B</span>
+          <span class="joystick-label left">L</span>
+          <div class="joystick-knob" id="joystick-knob"></div>
+        </div>
+        <div class="joystick-hint">Drag and hold to move. Release to stop.</div>
       </div>
     </div>
-
   </div>
 </div>
 
@@ -487,9 +484,9 @@
   const statusDot = document.getElementById('status-dot');
   const speedSlider = document.getElementById('speed-slider');
   const speedVal = document.getElementById('speed-val');
-  const driveButtons = Array.from(document.querySelectorAll('.drive-btn'));
-  const stopBtn = document.getElementById('stop-btn');
-  const stepBtns = Array.from(document.querySelectorAll('.step-btn'));
+  const joystick = document.getElementById('joystick');
+  const joystickKnob = document.getElementById('joystick-knob');
+  const joystickState = document.getElementById('joystick-state');
   const remoteVideo = document.getElementById('remote-video');
   const remoteAudioEl = document.getElementById('remote-audio');
   const btnMicSend = document.getElementById('btnMicSend');
@@ -498,7 +495,6 @@
   const fsPrompt = document.getElementById('ctrlFsPrompt');
   const fsButton = document.getElementById('ctrlFsButton');
 
-  let stepSize = 60;
   let socket = null;
   let reconnectDelay = 500;
   let reconnectTimer = null;
@@ -523,6 +519,10 @@
   let carAudioEnabled = true;
   let carVideoVisible = true;
   let controlBootstrapped = false;
+  let joystickPointerId = null;
+  let joystickSentDir = null;
+
+  const JOYSTICK_DEADZONE = 0.28;
 
 function buildRTCConfig() {
   const iceServers = STUN_SERVERS.map(url => {
@@ -567,7 +567,7 @@ function buildRTCConfig() {
   }
 
   function allControls() {
-    return [...driveButtons, stopBtn];
+    return [joystick, speedSlider];
   }
 
   async function requestFullscreen(element) {
@@ -596,9 +596,10 @@ function buildRTCConfig() {
   }
 
   function setControlsEnabled(enabled) {
-    driveButtons.forEach(btn => btn.classList.toggle('disabled', !enabled));
-    stopBtn.classList.toggle('disabled', !enabled);
     speedSlider.disabled = !enabled;
+    joystick.classList.toggle('disabled', !enabled);
+    joystick.setAttribute('aria-disabled', String(!enabled));
+    if (!enabled) resetJoystick(false);
   }
 
   function setLinkDisplay(text, online = false) {
@@ -643,8 +644,61 @@ function buildRTCConfig() {
     }
   }
 
-  function clearActiveButtons() {
-    driveButtons.forEach(btn => btn.classList.remove('active'));
+  function updateJoystickVisual(x = 0, y = 0, active = false) {
+    joystick.classList.toggle('active', active);
+    joystickKnob.style.transform = `translate(calc(-50% + ${x}px), calc(-50% + ${y}px))`;
+  }
+
+  function setJoystickStateLabel(dir = null) {
+    joystickState.textContent = dir || 'IDLE';
+  }
+
+  function resetJoystick(sendStopCommand = false) {
+    joystickPointerId = null;
+    updateJoystickVisual(0, 0, false);
+    setJoystickStateLabel(null);
+    if (sendStopCommand) sendStop();
+    joystickSentDir = null;
+  }
+
+  function resolveJoystickDirection(nx, ny) {
+    const magnitude = Math.hypot(nx, ny);
+    if (magnitude < JOYSTICK_DEADZONE) return null;
+    if (Math.abs(nx) > Math.abs(ny)) {
+      return nx > 0 ? 'R' : 'L';
+    }
+    return ny > 0 ? 'B' : 'F';
+  }
+
+  function sendJoystickDirection(nextDir) {
+    if (nextDir === joystickSentDir) return;
+    if (!nextDir) {
+      if (joystickSentDir) sendStop();
+      joystickSentDir = null;
+      setJoystickStateLabel(null);
+      return;
+    }
+    sendDrive(nextDir);
+    joystickSentDir = nextDir;
+    setJoystickStateLabel(nextDir);
+  }
+
+  function updateJoystickFromPoint(clientX, clientY) {
+    if (joystick.classList.contains('disabled')) return;
+    const rect = joystick.getBoundingClientRect();
+    const radius = rect.width / 2;
+    const knobRadius = joystickKnob.getBoundingClientRect().width / 2;
+    const maxDistance = Math.max(radius - knobRadius - 8, 0);
+    const rawX = clientX - (rect.left + radius);
+    const rawY = clientY - (rect.top + radius);
+    const distance = Math.hypot(rawX, rawY);
+    const scale = distance > maxDistance && distance > 0 ? maxDistance / distance : 1;
+    const x = rawX * scale;
+    const y = rawY * scale;
+    const normalizedX = maxDistance ? x / maxDistance : 0;
+    const normalizedY = maxDistance ? y / maxDistance : 0;
+    updateJoystickVisual(x, y, true);
+    sendJoystickDirection(resolveJoystickDirection(normalizedX, normalizedY));
   }
 
   function sendWs(payload) {
@@ -702,7 +756,7 @@ function buildRTCConfig() {
     socket.addEventListener('close', () => {
       clearInterval(heartbeatTimer); heartbeatTimer = null;
       msEl.textContent = '--'; activeDir = null; stopArmed = false;
-      pendingTimes.clear(); clearActiveButtons(); applyLinkStatus();
+      pendingTimes.clear(); resetJoystick(false); applyLinkStatus();
       scheduleReconnect();
     });
 
@@ -732,12 +786,12 @@ function buildRTCConfig() {
     fulfillLatency(baseKey);
     if (payload.status !== 'ok') {
       flashError(payload.reason || 'FAILED');
-      if (payload.cmd === 'drive' || payload.cmd === 'stop') { activeDir = null; stopArmed = false; clearActiveButtons(); }
+      if (payload.cmd === 'drive' || payload.cmd === 'stop') { activeDir = null; stopArmed = false; resetJoystick(false); }
       return;
     }
     switch (payload.cmd) {
       case 'drive': activeDir = payload.dir || null; break;
-      case 'stop': activeDir = null; stopArmed = false; clearActiveButtons(); break;
+      case 'stop': activeDir = null; stopArmed = false; resetJoystick(false); break;
     }
     applyLinkStatus();
   }
@@ -947,71 +1001,48 @@ function teardownPeer() {
     refreshCarAudioState(); refreshCarVideoState();
   }
 
-  async function triggerRotation(dir) {
-    if (!wsReady() || !lastStatusSnapshot.esp) { flashError('OFFLINE'); return; }
-    const start = performance.now();
-    try {
-      const res = await fetch("/rotate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ dir, deg: stepSize })
-      });
-      if (res.ok) msEl.textContent = Math.round(performance.now() - start);
-      else flashError('ROTATE FAIL');
-    } catch (e) { flashError('ROTATE LINK'); }
-  }
-
-  function setStep(val) {
-    stepSize = val;
-    stepBtns.forEach(btn => {
-      const btnVal = parseInt(btn.textContent);
-      btn.classList.toggle('active', btnVal === val);
-    });
-  }
-
-  // Drive button bindings
-  driveButtons.forEach(btn => {
-    const dir = btn.dataset.dir;
-    btn.addEventListener('pointerdown', (e) => {
-      e.preventDefault();
-      if (!wsReady()) return;
-      btn.classList.add('active');
-      sendDrive(dir);
-    });
-    const end = (e) => {
-      e.preventDefault();
-      btn.classList.remove('active');
-      if (!wsReady()) return;
-      sendStop();
-    };
-    btn.addEventListener('pointerup', end);
-    btn.addEventListener('pointerleave', end);
-    btn.addEventListener('pointercancel', end);
-  });
-
-  stopBtn.addEventListener('pointerdown', (e) => {
+  joystick.addEventListener('pointerdown', (e) => {
+    if (joystick.classList.contains('disabled')) return;
     e.preventDefault();
-    sendStop(true);
+    joystickPointerId = e.pointerId;
+    joystick.setPointerCapture(e.pointerId);
+    updateJoystickFromPoint(e.clientX, e.clientY);
   });
 
-  document.getElementById('turn-L').onclick = () => triggerRotation('R');
-  document.getElementById('turn-R').onclick = () => triggerRotation('L');
+  joystick.addEventListener('pointermove', (e) => {
+    if (e.pointerId !== joystickPointerId) return;
+    e.preventDefault();
+    updateJoystickFromPoint(e.clientX, e.clientY);
+  });
+
+  const endJoystick = (e) => {
+    if (e.pointerId !== joystickPointerId) return;
+    e.preventDefault();
+    if (joystick.hasPointerCapture(e.pointerId)) joystick.releasePointerCapture(e.pointerId);
+    resetJoystick(true);
+  };
+
+  joystick.addEventListener('pointerup', endJoystick);
+  joystick.addEventListener('pointercancel', endJoystick);
 
   const keyBindings = { arrowup: 'F', w: 'F', arrowdown: 'B', s: 'B', ' ': 'S' };
   document.addEventListener('keydown', (e) => {
     if (e.repeat) return;
     const dir = keyBindings[e.key.toLowerCase()] || keyBindings[e.code.toLowerCase()];
     if (!dir) return;
-    const btn = document.querySelector(`[data-dir="${dir}"]`);
-    if (btn) btn.classList.add('active');
-    if (dir === 'S') sendStop(true); else sendDrive(dir);
+    if (dir === 'S') {
+      resetJoystick(false);
+      sendStop(true);
+    } else {
+      sendDrive(dir);
+      joystickSentDir = dir;
+      setJoystickStateLabel(dir);
+    }
   });
   document.addEventListener('keyup', (e) => {
     const dir = keyBindings[e.key.toLowerCase()] || keyBindings[e.code.toLowerCase()];
     if (!dir) return;
-    const btn = document.querySelector(`[data-dir="${dir}"]`);
-    if (btn) btn.classList.remove('active');
-    if (dir !== 'S') sendStop();
+    if (dir !== 'S') resetJoystick(true);
   });
 
   speedSlider.addEventListener('input', (e) => { syncSpeedUI(e.target.value); });
@@ -1032,7 +1063,6 @@ function teardownPeer() {
   btnCarAudio.addEventListener('click', () => { carAudioEnabled = !carAudioEnabled; refreshCarAudioState(); });
   btnCarVideo.addEventListener('click', () => { carVideoVisible = !carVideoVisible; refreshCarVideoState(); });
 
-  setStep(stepSize);
   setControlsEnabled(false);
   setLinkDisplay('OFFLINE', false);
   updateMicToggleUI(); refreshCarAudioState(); refreshCarVideoState();
