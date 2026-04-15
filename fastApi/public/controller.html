@@ -805,8 +805,8 @@ function buildRTCConfig() {
     const targetSpeed = JOYSTICK_SPEED_MIN + normalizedMagnitude * (JOYSTICK_SPEED_MAX - JOYSTICK_SPEED_MIN);
     const unitX = magnitude > 0 ? nx / magnitude : 0;
     const unitY = magnitude > 0 ? ny / magnitude : 0;
-    let left = (-unitY * targetSpeed) + (unitX * targetSpeed);
-    let right = (-unitY * targetSpeed) - (unitX * targetSpeed);
+    let left = (-unitY * targetSpeed) - (unitX * targetSpeed);
+    let right = (-unitY * targetSpeed) + (unitX * targetSpeed);
     const peak = Math.max(Math.abs(left), Math.abs(right), 1);
     if (peak > targetSpeed) {
       const scale = targetSpeed / peak;
