@@ -54,7 +54,7 @@ int clampMotorPwm(int value) {
     return value;
 }
 
-void setLeftMotor(int speed) {
+void setMotorA(int speed) {
     int clamped = clampMotorPwm(speed);
     int pwm = abs(clamped);
     if (clamped > 0) {
@@ -70,7 +70,7 @@ void setLeftMotor(int speed) {
     ledcWrite(enA, pwm);
 }
 
-void setRightMotor(int speed) {
+void setMotorB(int speed) {
     int clamped = clampMotorPwm(speed);
     int pwm = abs(clamped);
     if (clamped > 0) {
@@ -86,9 +86,12 @@ void setRightMotor(int speed) {
     ledcWrite(enB, pwm);
 }
 
-void driveMotors(int leftSpeed, int rightSpeed) {
-    setLeftMotor(leftSpeed);
-    setRightMotor(rightSpeed);
+void driveMotors(int logicalLeftSpeed, int logicalRightSpeed) {
+    // Browser and backend speak in logical left/right wheel terms.
+    // The current rover wiring places motor A on the physical right side
+    // and motor B on the physical left side, so route the channels here.
+    setMotorB(logicalLeftSpeed);
+    setMotorA(logicalRightSpeed);
 }
 
 void motorStop() {
