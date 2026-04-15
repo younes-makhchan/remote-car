@@ -533,6 +533,8 @@
   let controlsEnabled = false;
   let joystickPointerId = null;
   let joystickSentMix = null;
+  let joystickTargetMix = null;
+  let joystickAppliedMix = null;
   let joystickVector = { x: 0, y: 0 };
   let settingsOpen = false;
   let joystickEditMode = false;
@@ -544,11 +546,12 @@
 
   const JOYSTICK_DEADZONE = 0.28;
   const JOYSTICK_DIRECTION_THRESHOLD = 0.24;
-  const JOYSTICK_PWM_STEP = 6;
-  const JOYSTICK_SPEED_MIN = 200;
-  const JOYSTICK_SPEED_MAX = 250;
-  const JOYSTICK_TURN_BLEND_MIN = 0.42;
-  const JOYSTICK_TURN_BLEND_MAX = 1.0;
+  const JOYSTICK_PWM_MIN = 200;
+  const JOYSTICK_PWM_MAX = 250;
+  const JOYSTICK_PIVOT_THRESHOLD = 0.12;
+  const JOYSTICK_ACTIVE_WHEEL_THRESHOLD = 0.10;
+  const JOYSTICK_SLEW_INTERVAL_MS = 33;
+  const JOYSTICK_SLEW_STEP = 10;
   const JOYSTICK_LAYOUT_STORAGE_KEY = 'apex-t-control.joystick-layout.v1';
   const JOYSTICK_LAYOUT_MARGIN = 12;
   const JOYSTICK_SIZE_MIN = 120;
@@ -558,6 +561,41 @@
 
   function clamp(value, min, max) {
     return Math.min(max, Math.max(min, value));
+  }
+
+  function squareSigned(value) {
+    return Math.sign(value) * value * value;
+  }
+
+  function normalizeWheelMix(left, right) {
+    const peak = Math.max(1, Math.abs(left), Math.abs(right));
+    return { left: left / peak, right: right / peak };
+  }
+
+  function mapWheelToPwm(value) {
+    const magnitude = Math.abs(value);
+    if (magnitude < JOYSTICK_ACTIVE_WHEEL_THRESHOLD) return 0;
+    const scaledRatio = clamp(
+      (magnitude - JOYSTICK_ACTIVE_WHEEL_THRESHOLD) / (1 - JOYSTICK_ACTIVE_WHEEL_THRESHOLD),
+      0,
+      1,
+    );
+    const pwm = JOYSTICK_PWM_MIN + (scaledRatio * (JOYSTICK_PWM_MAX - JOYSTICK_PWM_MIN));
+    return Math.round(Math.sign(value) * pwm);
+  }
+
+  function stepToward(current, target, step = JOYSTICK_SLEW_STEP) {
+    if (current === target) return current;
+    if (current < target) return Math.min(current + step, target);
+    return Math.max(current - step, target);
+  }
+
+  function clearJoystickDriveState(sendStopCommand = false) {
+    const shouldStop = sendStopCommand && stopArmed;
+    joystickTargetMix = null;
+    joystickAppliedMix = null;
+    joystickSentMix = null;
+    if (shouldStop) sendStop();
   }
 
   function loadJoystickLayout() {
@@ -790,8 +828,7 @@ function buildRTCConfig() {
     joystickVector = { x: 0, y: 0 };
     updateJoystickVisual(0, 0, false);
     setJoystickStateLabel(null);
-    if (sendStopCommand) sendStop();
-    joystickSentMix = null;
+    clearJoystickDriveState(sendStopCommand);
   }
 
   function resolveJoystickLabel(nx, ny) {
@@ -803,54 +840,81 @@ function buildRTCConfig() {
   function computeAnalogDrive(nx, ny) {
     const magnitude = Math.hypot(nx, ny);
     if (magnitude < JOYSTICK_DEADZONE) return { left: 0, right: 0 };
-    const normalizedMagnitude = Math.min(1, (magnitude - JOYSTICK_DEADZONE) / (1 - JOYSTICK_DEADZONE));
-    const targetSpeed = JOYSTICK_SPEED_MIN + normalizedMagnitude * (JOYSTICK_SPEED_MAX - JOYSTICK_SPEED_MIN);
+    const remappedMagnitude = clamp((magnitude - JOYSTICK_DEADZONE) / (1 - JOYSTICK_DEADZONE), 0, 1);
     const unitX = magnitude > 0 ? nx / magnitude : 0;
     const unitY = magnitude > 0 ? ny / magnitude : 0;
-    const forward = -unitY * targetSpeed;
-    // Keep diagonals feeling like game-stick arcs instead of dropping one side to zero too early.
-    const turnBlend = JOYSTICK_TURN_BLEND_MIN + ((JOYSTICK_TURN_BLEND_MAX - JOYSTICK_TURN_BLEND_MIN) * (1 - Math.abs(unitY)));
-    const turn = unitX * targetSpeed * turnBlend;
-    let left = forward - turn;
-    let right = forward + turn;
-    const peak = Math.max(Math.abs(left), Math.abs(right), 1);
-    if (peak > targetSpeed) {
-      const scale = targetSpeed / peak;
-      left *= scale;
-      right *= scale;
+    const remappedX = unitX * remappedMagnitude;
+    const remappedY = unitY * remappedMagnitude;
+    const forward = squareSigned(-remappedY);
+    const turn = squareSigned(remappedX);
+
+    let left = 0;
+    let right = 0;
+
+    if (Math.abs(forward) < JOYSTICK_PIVOT_THRESHOLD) {
+      left = -turn;
+      right = turn;
+    } else if (forward > 0) {
+      left = Math.max(0, forward - turn);
+      right = Math.max(0, forward + turn);
+    } else {
+      left = Math.min(0, forward - turn);
+      right = Math.min(0, forward + turn);
     }
-    return { left: Math.round(left), right: Math.round(right) };
+
+    const normalized = normalizeWheelMix(left, right);
+    return {
+      left: mapWheelToPwm(normalized.left),
+      right: mapWheelToPwm(normalized.right),
+    };
   }
 
   function sendAnalogDrive(left, right, label) {
     const nextMix = { left, right, label };
     if (joystickSentMix &&
-        Math.abs(joystickSentMix.left - left) < JOYSTICK_PWM_STEP &&
-        Math.abs(joystickSentMix.right - right) < JOYSTICK_PWM_STEP &&
+        joystickSentMix.left === left &&
+        joystickSentMix.right === right &&
         joystickSentMix.label === label) {
-      return;
+      return true;
     }
-    stopArmed = true;
     if (!sendWs({ type: 'drive_analog', left, right, label })) {
       flashError('NO LINK');
-      return;
+      return false;
     }
+    stopArmed = true;
     joystickSentMix = nextMix;
-    setJoystickStateLabel(label);
+    return true;
+  }
+
+  function applyJoystickTargetMix() {
+    if (!joystickTargetMix) return;
+    const currentMix = joystickAppliedMix || joystickSentMix || { left: 0, right: 0, label: joystickTargetMix.label };
+    const nextMix = {
+      left: stepToward(currentMix.left, joystickTargetMix.left),
+      right: stepToward(currentMix.right, joystickTargetMix.right),
+      label: joystickTargetMix.label,
+    };
+    joystickAppliedMix = nextMix;
+    sendAnalogDrive(nextMix.left, nextMix.right, nextMix.label);
   }
 
   function refreshAnalogDrive() {
     const { x, y } = joystickVector;
     const magnitude = Math.hypot(x, y);
     if (magnitude < JOYSTICK_DEADZONE) {
-      if (joystickSentMix) sendStop();
-      joystickSentMix = null;
+      clearJoystickDriveState(true);
       setJoystickStateLabel(null);
       return;
     }
     const label = resolveJoystickLabel(x, y);
     const { left, right } = computeAnalogDrive(x, y);
-    sendAnalogDrive(left, right, label);
+    if (left === 0 && right === 0) {
+      clearJoystickDriveState(true);
+      setJoystickStateLabel(null);
+      return;
+    }
+    joystickTargetMix = { left, right, label };
+    setJoystickStateLabel(label);
   }
 
   function updateJoystickFromPoint(clientX, clientY) {
@@ -1256,6 +1320,8 @@ function teardownPeer() {
   updateMicToggleUI(); refreshCarAudioState(); refreshCarVideoState();
   applyStoredJoystickLayout(false);
 
+  const joystickSlewTimer = window.setInterval(applyJoystickTargetMix, JOYSTICK_SLEW_INTERVAL_MS);
+
   window.addEventListener('focus', () => {
     if (!controlBootstrapped) return;
     connectSignalChannel();
@@ -1263,6 +1329,7 @@ function teardownPeer() {
   });
   window.addEventListener('resize', () => { applyStoredJoystickLayout(false); });
   window.addEventListener('beforeunload', () => {
+    clearInterval(joystickSlewTimer);
     if (socket) try { socket.close(); } catch (_) {}
     if (signalSocket) try { signalSocket.close(); } catch (_) {}
   });
