@@ -307,6 +307,30 @@
       font-size: 11px;
       letter-spacing: 0.14em;
     }
+    .drive-debug {
+      width: 100%;
+      min-width: 148px;
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 4px 8px;
+      padding: 8px 10px;
+      border-radius: 14px;
+      background: rgba(8, 13, 22, 0.5);
+      border: 1px solid rgba(56, 189, 248, 0.16);
+      color: rgba(226, 232, 240, 0.8);
+      font-size: 9px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      backdrop-filter: blur(10px);
+    }
+    .drive-debug-label {
+      color: rgba(148, 163, 184, 0.72);
+    }
+    .drive-debug-value {
+      color: rgba(248, 250, 252, 0.92);
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
     .joystick-shell {
       position: relative;
       width: var(--joystick-size);
@@ -462,6 +486,14 @@
         <span>Drive Stick</span>
         <span id="joystick-state">IDLE</span>
       </div>
+      <div class="drive-debug" aria-live="polite">
+        <span class="drive-debug-label">Target</span>
+        <span class="drive-debug-value" id="drive-debug-target">L 0 | R 0</span>
+        <span class="drive-debug-label">Applied</span>
+        <span class="drive-debug-value" id="drive-debug-applied">L 0 | R 0</span>
+        <span class="drive-debug-label">Ack</span>
+        <span class="drive-debug-value" id="drive-debug-ack">L 0 | R 0</span>
+      </div>
       <div class="joystick-shell" id="joystick" aria-label="Drive joystick" role="application">
         <div class="joystick-ring"></div>
         <span class="joystick-label top">F</span>
@@ -492,6 +524,9 @@
   const joystick = document.getElementById('joystick');
   const joystickKnob = document.getElementById('joystick-knob');
   const joystickState = document.getElementById('joystick-state');
+  const driveDebugTarget = document.getElementById('drive-debug-target');
+  const driveDebugApplied = document.getElementById('drive-debug-applied');
+  const driveDebugAck = document.getElementById('drive-debug-ack');
   const remoteVideo = document.getElementById('remote-video');
   const remoteAudioEl = document.getElementById('remote-audio');
   const btnMicSend = document.getElementById('btnMicSend');
@@ -533,6 +568,7 @@
   let controlsEnabled = false;
   let joystickPointerId = null;
   let joystickSentMix = null;
+  let joystickAckMix = null;
   let joystickTargetMix = null;
   let joystickAppliedMix = null;
   let joystickVector = { x: 0, y: 0 };
@@ -551,7 +587,8 @@
   const JOYSTICK_PIVOT_THRESHOLD = 0.12;
   const JOYSTICK_ACTIVE_WHEEL_THRESHOLD = 0.10;
   const JOYSTICK_SLEW_INTERVAL_MS = 33;
-  const JOYSTICK_SLEW_STEP = 10;
+  const JOYSTICK_SLEW_PWM_STEP = 10;
+  const JOYSTICK_SLEW_WHEEL_STEP = (JOYSTICK_SLEW_PWM_STEP / (JOYSTICK_PWM_MAX - JOYSTICK_PWM_MIN)) * (1 - JOYSTICK_ACTIVE_WHEEL_THRESHOLD);
   const JOYSTICK_LAYOUT_STORAGE_KEY = 'apex-t-control.joystick-layout.v1';
   const JOYSTICK_LAYOUT_MARGIN = 12;
   const JOYSTICK_SIZE_MIN = 120;
@@ -584,10 +621,31 @@
     return Math.round(Math.sign(value) * pwm);
   }
 
-  function stepToward(current, target, step = JOYSTICK_SLEW_STEP) {
+  function stepToward(current, target, step = JOYSTICK_SLEW_WHEEL_STEP) {
     if (current === target) return current;
     if (current < target) return Math.min(current + step, target);
     return Math.max(current - step, target);
+  }
+
+  function createDriveMix(leftWheel, rightWheel, label = 'IDLE') {
+    return {
+      leftWheel,
+      rightWheel,
+      left: mapWheelToPwm(leftWheel),
+      right: mapWheelToPwm(rightWheel),
+      label,
+    };
+  }
+
+  function formatDriveMix(mix) {
+    if (!mix) return 'L 0 | R 0';
+    return `L ${mix.left} | R ${mix.right}`;
+  }
+
+  function updateDriveDebug() {
+    driveDebugTarget.textContent = formatDriveMix(joystickTargetMix);
+    driveDebugApplied.textContent = formatDriveMix(joystickAppliedMix);
+    driveDebugAck.textContent = formatDriveMix(joystickAckMix);
   }
 
   function clearJoystickDriveState(sendStopCommand = false) {
@@ -595,6 +653,7 @@
     joystickTargetMix = null;
     joystickAppliedMix = null;
     joystickSentMix = null;
+    updateDriveDebug();
     if (shouldStop) sendStop();
   }
 
@@ -863,10 +922,7 @@ function buildRTCConfig() {
     }
 
     const normalized = normalizeWheelMix(left, right);
-    return {
-      left: mapWheelToPwm(normalized.left),
-      right: mapWheelToPwm(normalized.right),
-    };
+    return createDriveMix(normalized.left, normalized.right);
   }
 
   function sendAnalogDrive(left, right, label) {
@@ -883,18 +939,20 @@ function buildRTCConfig() {
     }
     stopArmed = true;
     joystickSentMix = nextMix;
+    updateDriveDebug();
     return true;
   }
 
   function applyJoystickTargetMix() {
     if (!joystickTargetMix) return;
-    const currentMix = joystickAppliedMix || joystickSentMix || { left: 0, right: 0, label: joystickTargetMix.label };
-    const nextMix = {
-      left: stepToward(currentMix.left, joystickTargetMix.left),
-      right: stepToward(currentMix.right, joystickTargetMix.right),
-      label: joystickTargetMix.label,
-    };
+    const currentMix = joystickAppliedMix || createDriveMix(0, 0, joystickTargetMix.label);
+    const nextMix = createDriveMix(
+      stepToward(currentMix.leftWheel, joystickTargetMix.leftWheel, JOYSTICK_SLEW_WHEEL_STEP),
+      stepToward(currentMix.rightWheel, joystickTargetMix.rightWheel, JOYSTICK_SLEW_WHEEL_STEP),
+      joystickTargetMix.label,
+    );
     joystickAppliedMix = nextMix;
+    updateDriveDebug();
     sendAnalogDrive(nextMix.left, nextMix.right, nextMix.label);
   }
 
@@ -907,14 +965,15 @@ function buildRTCConfig() {
       return;
     }
     const label = resolveJoystickLabel(x, y);
-    const { left, right } = computeAnalogDrive(x, y);
-    if (left === 0 && right === 0) {
+    const driveMix = computeAnalogDrive(x, y);
+    if (driveMix.left === 0 && driveMix.right === 0) {
       clearJoystickDriveState(true);
       setJoystickStateLabel(null);
       return;
     }
-    joystickTargetMix = { left, right, label };
+    joystickTargetMix = { ...driveMix, label };
     setJoystickStateLabel(label);
+    updateDriveDebug();
   }
 
   function updateJoystickFromPoint(clientX, clientY) {
@@ -1009,11 +1068,16 @@ function buildRTCConfig() {
     switch (payload.cmd) {
       case 'drive_analog':
         if (typeof payload.left === 'number' && typeof payload.right === 'number') {
-          joystickSentMix = { left: payload.left, right: payload.right, label: payload.label || 'IDLE' };
+          joystickAckMix = { left: payload.left, right: payload.right, label: payload.label || 'IDLE' };
         }
         break;
-      case 'stop': stopArmed = false; resetJoystick(false); break;
+      case 'stop':
+        joystickAckMix = { left: 0, right: 0, label: 'IDLE' };
+        stopArmed = false;
+        resetJoystick(false);
+        break;
     }
+    updateDriveDebug();
     applyLinkStatus();
   }
 
@@ -1319,6 +1383,7 @@ function teardownPeer() {
   setLinkDisplay('OFFLINE', false);
   updateMicToggleUI(); refreshCarAudioState(); refreshCarVideoState();
   applyStoredJoystickLayout(false);
+  updateDriveDebug();
 
   const joystickSlewTimer = window.setInterval(applyJoystickTargetMix, JOYSTICK_SLEW_INTERVAL_MS);
 
