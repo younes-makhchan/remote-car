@@ -34,6 +34,7 @@ from fastapi.staticfiles import StaticFiles
 #  CONFIG
 # ══════════════════════════════════════════════════
 PORT = int(os.getenv("PORT", "5000"))
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 BASE = Path(__file__).parent
 ICE_JSON_PATH = BASE / "ice_servers.json"
 ESP_HEARTBEAT_INTERVAL = 10.0
@@ -41,6 +42,33 @@ ESP_HEARTBEAT_TIMEOUT = ESP_HEARTBEAT_INTERVAL * 3
 CTRL_HEARTBEAT_INTERVAL = 2.0
 CTRL_HEARTBEAT_TIMEOUT = CTRL_HEARTBEAT_INTERVAL * 3
 MOTOR_POWER_MAX = 255
+
+
+def setup_logging() -> logging.Logger:
+    logger = logging.getLogger("robot")
+    level = getattr(logging, LOG_LEVEL, logging.INFO)
+    logger.setLevel(level)
+    logger.propagate = False
+
+    if not logger.handlers:
+        handler = logging.StreamHandler()
+        handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s [%(component)s] %(message)s"))
+        logger.addHandler(handler)
+
+    for handler in logger.handlers:
+        handler.setLevel(level)
+
+    return logger
+
+
+log = setup_logging()
+
+
+def log_event(level: int, component: str, message: str, **fields):
+    details = " ".join(f"{key}={value!r}" for key, value in fields.items() if value is not None)
+    if details:
+        message = f"{message} {details}"
+    log.log(level, message, extra={"component": component})
 
 
 def clamp_motor_power(val: int) -> int:
@@ -72,7 +100,7 @@ def _load_json_ice_servers() -> list[str]:
     try:
         data = json.loads(ICE_JSON_PATH.read_text())
     except Exception as exc:
-        log.warning("Failed to read %s: %s", ICE_JSON_PATH, exc)
+        log_event(logging.WARNING, "config", "failed to read ICE config", path=str(ICE_JSON_PATH), error=str(exc))
         return []
 
     entries: list[str] = []
@@ -119,12 +147,6 @@ def split_ice_entries(entries: list[str]) -> tuple[list[str], list[str]]:
     return stun, turn
 # ══════════════════════════════════════════════════
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)s %(message)s"
-)
-log = logging.getLogger("robot")
-
 app = FastAPI(title="Robot Car", version="2.0")
 PUBLIC_DIR = BASE / "public"
 PUBLIC_DIR.mkdir(exist_ok=True)
@@ -149,7 +171,7 @@ class ESP32Connection:
                 await self.ws.send_text(cmd)
                 return True
             except Exception as e:
-                log.warning(f"ESP32 send error: {e}")
+                log_event(logging.WARNING, "esp", "send failed", command=cmd, error=str(e))
                 self.ws = None
                 self.connected = False
                 return False
@@ -407,7 +429,7 @@ async def esp_endpoint(ws: WebSocket):
     await ws.accept()
     await esp32.register(ws)
     await controller.send_status()
-    log.info("✅ ESP32 connected")
+    log_event(logging.INFO, "esp", "connected")
 
     try:
         while True:
@@ -416,22 +438,22 @@ async def esp_endpoint(ws: WebSocket):
             msg = await asyncio.wait_for(ws.receive_text(), timeout=ESP_HEARTBEAT_TIMEOUT)
             esp32.touch()
             if msg == "heartbeat":
-                log.debug("ESP32 heartbeat")
+                log_event(logging.DEBUG, "esp", "heartbeat")
                 continue
-            log.info(f"ESP32 → server: {msg!r}")
+            log_event(logging.INFO, "esp", "message received", payload=msg)
 
     except asyncio.TimeoutError:
-        log.warning("ESP32 heartbeat timeout — closing")
+        log_event(logging.WARNING, "esp", "heartbeat timeout; closing connection")
         with suppress(Exception):
             await ws.close(code=4410)
     except WebSocketDisconnect:
-        log.info("ESP32 disconnected")
+        log_event(logging.INFO, "esp", "disconnected")
     except Exception as e:
-        log.warning(f"ESP32 error: {e}")
+        log_event(logging.WARNING, "esp", "socket error", error=str(e))
     finally:
         await esp32.unregister()
         await controller.handle_esp_drop()
-        log.info("❌ ESP32 connection removed")
+        log_event(logging.INFO, "esp", "connection removed")
 
 
 # ──────────────────────────────────────────────────
@@ -441,7 +463,7 @@ async def esp_endpoint(ws: WebSocket):
 async def controller_endpoint(ws: WebSocket):
     await ws.accept()
     await controller.attach(ws)
-    log.info("🎮 Controller connected")
+    log_event(logging.INFO, "ctrl", "connected")
     await controller.send_status()
 
     async def status_loop():
@@ -461,6 +483,7 @@ async def controller_endpoint(ws: WebSocket):
             try:
                 raw = await asyncio.wait_for(ws.receive_text(), timeout=CTRL_HEARTBEAT_TIMEOUT)
             except asyncio.TimeoutError:
+                log_event(logging.WARNING, "ctrl", "heartbeat timeout")
                 await controller.send_error("heartbeat_timeout")
                 await ws.close(code=4410)
                 break
@@ -468,6 +491,7 @@ async def controller_endpoint(ws: WebSocket):
             try:
                 msg = json.loads(raw)
             except json.JSONDecodeError:
+                log_event(logging.WARNING, "ctrl", "rejected bad json", raw=raw)
                 await controller.send_error("bad_json")
                 continue
 
@@ -475,16 +499,19 @@ async def controller_endpoint(ws: WebSocket):
             msg_type = (msg.get("type") or "").lower()
 
             if msg_type == "heartbeat":
+                log_event(logging.DEBUG, "ctrl", "heartbeat")
                 await controller.send_ack("heartbeat", "ok")
                 continue
 
             if msg_type == "hello":
+                log_event(logging.INFO, "ctrl", "hello accepted", version=msg.get("version"))
                 await controller.send_ack("hello", "ok", version=msg.get("version"))
                 continue
 
             if msg_type == "stop":
                 delivered = await controller.stop_drive()
                 status = "ok" if delivered else "error"
+                log_event(logging.INFO, "ctrl", "stop requested", status=status, delivered=delivered)
                 await controller.send_ack("stop", status, delivered=delivered)
                 await controller.send_status()
                 continue
@@ -493,18 +520,31 @@ async def controller_endpoint(ws: WebSocket):
                 left = msg.get("left")
                 right = msg.get("right")
                 if not isinstance(left, (int, float)) or not isinstance(right, (int, float)):
+                    log_event(logging.WARNING, "ctrl", "rejected drive_analog bad value", left=left, right=right)
                     await controller.send_ack("drive_analog", "error", reason="bad_value")
                     continue
                 if not esp32.connected:
+                    log_event(logging.WARNING, "ctrl", "rejected drive_analog; esp offline", left=left, right=right)
                     await controller.send_ack("drive_analog", "error", reason="esp_offline")
                     continue
                 clamped_left = clamp_motor_power(round(left))
                 clamped_right = clamp_motor_power(round(right))
+                log_event(logging.INFO, "ctrl", f"cright {clamped_right} cleft {clamped_left} left {left}  right {right}", left=left, right=right)
+
                 label = str(msg.get("label") or "").strip().upper() or None
                 sent = await controller.set_drive_mix(clamped_left, clamped_right, label=label)
                 if not sent:
+                    log_event(
+                        logging.WARNING,
+                        "ctrl",
+                        "drive_analog send failed; esp offline",
+                        left=clamped_left,
+                        right=clamped_right,
+                        label=label,
+                    )
                     await controller.send_ack("drive_analog", "error", reason="esp_offline")
                     continue
+                log_event(logging.INFO, "ctrl", "drive_analog accepted", left=clamped_left, right=clamped_right, label=label)
                 await controller.send_ack(
                     "drive_analog",
                     "ok",
@@ -516,15 +556,17 @@ async def controller_endpoint(ws: WebSocket):
                 continue
 
             if msg_type == "status":
+                log_event(logging.DEBUG, "ctrl", "status requested")
                 await controller.send_status()
                 continue
 
+            log_event(logging.WARNING, "ctrl", "unsupported message type", msg_type=msg.get("type"))
             await controller.send_error("unsupported_type", type=msg.get("type"))
 
     except WebSocketDisconnect:
-        log.info("🎮 Controller disconnected")
+        log_event(logging.INFO, "ctrl", "disconnected")
     except Exception as e:
-        log.info(f"🎮 Controller error: {e}")
+        log_event(logging.WARNING, "ctrl", "socket error", error=str(e))
     finally:
         status_task.cancel()
         with suppress(asyncio.CancelledError):
@@ -547,9 +589,9 @@ async def signaling_ws(ws: WebSocket, role: str = Query(...)):
     if not joined:
         await ws.send_text(json.dumps({"type": "error", "reason": "role_taken"}))
         await ws.close(code=4409)
-        log.info(f"[SIG] {role} refused (role already occupied)")
+        log_event(logging.WARNING, "sig", "join refused; role already occupied", role=role)
         return
-    log.info(f"[SIG] {role} joined")
+    log_event(logging.INFO, "sig", "joined", role=role)
 
     # Notify both sides if room is now complete
     other = "ctrl" if role == "car" else "car"
@@ -564,15 +606,17 @@ async def signaling_ws(ws: WebSocket, role: str = Query(...)):
             try:
                 msg = json.loads(raw)
             except json.JSONDecodeError:
+                log_event(logging.WARNING, "sig", "ignored bad json", role=role)
                 continue
             if "type" not in msg:
                 msg["type"] = "custom"
+            log_event(logging.DEBUG, "sig", "relayed message", role=role, msg_type=msg.get("type"))
             await room.relay(role, msg)
 
     except WebSocketDisconnect:
-        log.info(f"[SIG] {role} disconnected")
+        log_event(logging.INFO, "sig", "disconnected", role=role)
     except Exception as e:
-        log.info(f"[SIG] {role} error: {e}")
+        log_event(logging.WARNING, "sig", "socket error", role=role, error=str(e))
     finally:
         await room.leave(role, ws)
         await room.relay(role, {"type": "peer_left", "role": role})
