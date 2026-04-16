@@ -380,6 +380,7 @@
   const JOYSTICK_PWM_MAX = 240;
   const JOYSTICK_PWM_MIN = 200;
   const JOYSTICK_NIPPLE_SIZE = 76;
+  const JOYSTICK_TURN_GAIN = 1.35;
 
   function clamp(value, min, max) {
     return Math.min(max, Math.max(min, value));
@@ -571,13 +572,15 @@ function buildRTCConfig() {
 
   function resolveJoystickLabel(x, y) {
     const vertical = y <= -JOYSTICK_DIRECTION_THRESHOLD ? 'F' : y >= JOYSTICK_DIRECTION_THRESHOLD ? 'B' : '';
-    const horizontal = x >= JOYSTICK_DIRECTION_THRESHOLD ? 'R' : x <= -JOYSTICK_DIRECTION_THRESHOLD ? 'L' : '';
+    const horizontal = x >= JOYSTICK_DIRECTION_THRESHOLD ? 'L' : x <= -JOYSTICK_DIRECTION_THRESHOLD ? 'R' : '';
     return `${vertical}${horizontal}` || vertical || horizontal || 'IDLE';
   }
 
   function computeDriveMix(x, y, force) {
     const forward = -y * force;
-    const turn = x * force;
+    // This rover is differential drive: stronger curves come from widening the
+    // left/right power gap, not from independent FL/FR/BL/BR wheel control.
+    const turn = x * force * JOYSTICK_TURN_GAIN;
     const left = clamp(forward - turn, -1, 1);
     const right = clamp(forward + turn, -1, 1);
     return {
