@@ -184,94 +184,19 @@
       position: fixed;
       left: max(16px, env(safe-area-inset-left));
       bottom: max(16px, env(safe-area-inset-bottom));
-      display: flex;
       pointer-events: auto;
       z-index: 12;
       --joystick-size: 172px;
     }
-    .joystick-card {
-      width: var(--joystick-size);
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-      align-items: center;
-      padding: 12px;
-      border-radius: 28px;
-      background: rgba(8, 13, 22, 0.34);
-      border: 1px solid rgba(255, 255, 255, 0.06);
-      backdrop-filter: blur(12px);
-      box-shadow: 0 18px 36px rgba(2, 6, 23, 0.24);
-    }
-    .joystick-header {
-      width: 100%;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 0 4px;
-      font-size: 9px;
-      letter-spacing: 0.18em;
-      text-transform: uppercase;
-      color: rgba(226, 232, 240, 0.64);
-    }
-    #joystick-state {
-      color: rgba(255, 255, 255, 0.92);
-      font-family: 'Orbitron', sans-serif;
-      font-size: 11px;
-      letter-spacing: 0.14em;
-    }
-    .joystick-shell {
-      position: relative;
+    .joystick-zone {
       width: var(--joystick-size);
       aspect-ratio: 1;
-      border-radius: 50%;
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      background:
-        radial-gradient(circle at center, rgba(255, 255, 255, 0.1) 0, rgba(255, 255, 255, 0.04) 22%, rgba(15, 23, 42, 0.32) 70%, rgba(2, 6, 23, 0.44) 100%);
-      box-shadow: inset 0 0 30px rgba(255, 255, 255, 0.04), 0 12px 24px rgba(2, 6, 23, 0.18);
       touch-action: none;
       user-select: none;
-      overflow: hidden;
-      display: flex;
-      align-items: center;
-      justify-content: center;
     }
-    .joystick-shell.disabled {
+    .joystick-zone.disabled {
       opacity: 0.35;
-      filter: saturate(0.3);
       pointer-events: none;
-    }
-    .joystick-shell.active {
-      box-shadow: inset 0 0 34px rgba(255, 255, 255, 0.06), 0 12px 30px rgba(56, 189, 248, 0.14);
-    }
-    .joystick-shell::before,
-    .joystick-shell::after {
-      content: '';
-      position: absolute;
-      inset: 50%;
-      background: rgba(148, 163, 184, 0.14);
-      transform: translate(-50%, -50%);
-      pointer-events: none;
-    }
-    .joystick-shell::before {
-      width: 74%;
-      height: 1px;
-    }
-    .joystick-shell::after {
-      width: 1px;
-      height: 74%;
-    }
-    .joystick-shell .back,
-    .joystick-shell .front {
-      backdrop-filter: blur(4px);
-    }
-    .joystick-shell .back {
-      background: rgba(56, 189, 248, 0.12) !important;
-      border: 1px solid rgba(125, 211, 252, 0.18);
-    }
-    .joystick-shell .front {
-      background: radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.9) 0, rgba(186, 230, 253, 0.72) 45%, rgba(15, 23, 42, 0.86) 100%) !important;
-      border: 2px solid rgba(255, 255, 255, 0.08);
-      box-shadow: 0 0 18px rgba(255, 255, 255, 0.16), inset 0 0 18px rgba(255, 255, 255, 0.12);
     }
     @media (max-width: 720px) {
       .joystick-overlay {
@@ -313,13 +238,7 @@
   </div>
 
   <div id="joystick-overlay" class="joystick-overlay">
-    <div class="joystick-card">
-      <div class="joystick-header">
-        <span>Drive</span>
-        <span id="joystick-state">IDLE</span>
-      </div>
-      <div class="joystick-shell" id="joystick" aria-label="Drive joystick" role="application"></div>
-    </div>
+    <div class="joystick-zone" id="joystick" aria-label="Drive joystick" role="application"></div>
   </div>
 </div>
 
@@ -339,7 +258,6 @@
   const linkStatusEl = document.getElementById('link-status');
   const statusDot = document.getElementById('status-dot');
   const joystick = document.getElementById('joystick');
-  const joystickState = document.getElementById('joystick-state');
   const remoteVideo = document.getElementById('remote-video');
   const remoteAudioEl = document.getElementById('remote-audio');
   const btnMicSend = document.getElementById('btnMicSend');
@@ -399,8 +317,6 @@
   function clearJoystickDriveState(sendStopCommand = false) {
     const shouldStop = sendStopCommand && stopArmed;
     joystickSentMix = null;
-    updateJoystickVisual(false);
-    setJoystickStateLabel(null);
     if (shouldStop) sendStop();
   }
 
@@ -408,10 +324,6 @@
     if (!joystickManager) return;
     try { joystickManager.destroy(); } catch (_) {}
     joystickManager = null;
-  }
-
-  function updateJoystickVisual(active = false) {
-    joystick.classList.toggle('active', active);
   }
 
   function refreshJoystickManager() {
@@ -430,13 +342,11 @@
     });
     joystickManager.on('start', () => {
       if (!controlsEnabled) return;
-      updateJoystickVisual(true);
     });
     joystickManager.on('move', (_evt, data) => {
       if (!controlsEnabled || !data) return;
       const vector = data.vector || { x: 0, y: 0 };
       const force = clamp(Number(data.force) || 0, 0, 1);
-      updateJoystickVisual(true);
       applyJoystickDrive(
         clamp(-(Number(vector.x) || 0), -1, 1),
         clamp(-(Number(vector.y) || 0), -1, 1),
@@ -564,10 +474,6 @@ function buildRTCConfig() {
     }
   }
 
-  function setJoystickStateLabel(dir = null) {
-    joystickState.textContent = dir || 'IDLE';
-  }
-
   function resetJoystick(sendStopCommand = false) {
     clearJoystickDriveState(sendStopCommand);
   }
@@ -638,7 +544,6 @@ function buildRTCConfig() {
 
   function applyJoystickDrive(x, y, force) {
     const driveMix = computeDriveMix(x, y, force);
-    setJoystickStateLabel(driveMix.label);
     if (driveMix.left === 0 && driveMix.right === 0) {
       if (driveMix.label === 'IDLE') {
         clearJoystickDriveState(true);
