@@ -375,23 +375,25 @@
   let joystickSentMix = null;
   let joystickManager = null;
 
-  const JOYSTICK_DEADZONE = 0.18;
-  const JOYSTICK_DIRECTION_THRESHOLD = 0.24;
+  const JOYSTICK_X_DEADZONE = 0.18;
+  const JOYSTICK_Y_DEADZONE = 0.18;
   const JOYSTICK_PWM_MAX = 240;
-  const JOYSTICK_PWM_MIN = 200;
+  const JOYSTICK_PWM_MIN_EFFECTIVE = 70;
   const JOYSTICK_NIPPLE_SIZE = 76;
-  const JOYSTICK_TURN_GAIN = 1.35;
 
   function clamp(value, min, max) {
     return Math.min(max, Math.max(min, value));
   }
 
-  function scaleMotorPower(value) {
+  function axisToPwm(value, deadzone) {
     const magnitude = Math.abs(value);
-    if (magnitude <= 0) return 0;
-    const scaledRatio = clamp(magnitude, 0, 1);
-    const pwm = JOYSTICK_PWM_MIN + (scaledRatio * (JOYSTICK_PWM_MAX - JOYSTICK_PWM_MIN));
-    return Math.round(Math.sign(value) * pwm);
+    if (magnitude <= deadzone) return 0;
+    const scaledRatio = clamp((magnitude - deadzone) / (1 - deadzone), 0, 1);
+    return Math.round(scaledRatio * JOYSTICK_PWM_MAX);
+  }
+
+  function applyMotorCutoff(value) {
+    return value < JOYSTICK_PWM_MIN_EFFECTIVE ? 0 : value;
   }
 
   function clearJoystickDriveState(sendStopCommand = false) {
@@ -571,22 +573,49 @@ function buildRTCConfig() {
   }
 
   function resolveJoystickLabel(x, y) {
-    const vertical = y <= -JOYSTICK_DIRECTION_THRESHOLD ? 'F' : y >= JOYSTICK_DIRECTION_THRESHOLD ? 'B' : '';
-    const horizontal = x >= JOYSTICK_DIRECTION_THRESHOLD ? 'L' : x <= -JOYSTICK_DIRECTION_THRESHOLD ? 'R' : '';
+    const vertical = y <= -JOYSTICK_Y_DEADZONE ? 'F' : y >= JOYSTICK_Y_DEADZONE ? 'B' : '';
+    const horizontal = x >= JOYSTICK_X_DEADZONE ? 'L' : x <= -JOYSTICK_X_DEADZONE ? 'R' : '';
     return `${vertical}${horizontal}` || vertical || horizontal || 'IDLE';
   }
 
   function computeDriveMix(x, y, force) {
-    const forward = -y * force;
-    // This rover is differential drive: stronger curves come from widening the
-    // left/right power gap, not from independent FL/FR/BL/BR wheel control.
-    const turn = x * force * JOYSTICK_TURN_GAIN;
-    const left = clamp(forward - turn, -1, 1);
-    const right = clamp(forward + turn, -1, 1);
+    // Direct browser port of the Arduino receiver algorithm: Y sets shared
+    // forward/backward speed and X biases left/right motor PWM.
+    const effectiveX = clamp(x * force, -1, 1);
+    const effectiveY = clamp(y * force, -1, 1);
+    const label = resolveJoystickLabel(effectiveX, effectiveY);
+    let direction = 0;
+    let left = 0;
+    let right = 0;
+
+    if (effectiveY <= -JOYSTICK_Y_DEADZONE) {
+      const baseSpeed = axisToPwm(effectiveY, JOYSTICK_Y_DEADZONE);
+      left = baseSpeed;
+      right = baseSpeed;
+      direction = 1;
+    } else if (effectiveY >= JOYSTICK_Y_DEADZONE) {
+      const baseSpeed = axisToPwm(effectiveY, JOYSTICK_Y_DEADZONE);
+      left = baseSpeed;
+      right = baseSpeed;
+      direction = -1;
+    }
+
+    if (effectiveX >= JOYSTICK_X_DEADZONE) {
+      const steering = axisToPwm(effectiveX, JOYSTICK_X_DEADZONE);
+      left -= steering;
+      right += steering;
+    } else if (effectiveX <= -JOYSTICK_X_DEADZONE) {
+      const steering = axisToPwm(effectiveX, JOYSTICK_X_DEADZONE);
+      left += steering;
+      right -= steering;
+    }
+
+    left = applyMotorCutoff(clamp(left, 0, JOYSTICK_PWM_MAX));
+    right = applyMotorCutoff(clamp(right, 0, JOYSTICK_PWM_MAX));
     return {
-      left: scaleMotorPower(left),
-      right: scaleMotorPower(right),
-      label: resolveJoystickLabel(x, y),
+      left: direction < 0 ? -left : left,
+      right: direction < 0 ? -right : right,
+      label,
     };
   }
 
@@ -608,17 +637,17 @@ function buildRTCConfig() {
   }
 
   function applyJoystickDrive(x, y, force) {
-    const magnitude = Math.hypot(x, y) * force;
-    if (magnitude < JOYSTICK_DEADZONE) {
-      clearJoystickDriveState(true);
-      return;
-    }
     const driveMix = computeDriveMix(x, y, force);
+    setJoystickStateLabel(driveMix.label);
     if (driveMix.left === 0 && driveMix.right === 0) {
-      clearJoystickDriveState(true);
+      if (driveMix.label === 'IDLE') {
+        clearJoystickDriveState(true);
+      } else {
+        joystickSentMix = null;
+        sendStop();
+      }
       return;
     }
-    setJoystickStateLabel(driveMix.label);
     sendAnalogDrive(driveMix.left, driveMix.right, driveMix.label);
   }
 
