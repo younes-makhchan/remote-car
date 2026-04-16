@@ -435,8 +435,8 @@
       const force = clamp(Number(data.force) || 0, 0, 1);
       updateJoystickVisual(true);
       applyJoystickDrive(
-        clamp(Number(vector.x) || 0, -1, 1),
-        clamp(Number(vector.y) || 0, -1, 1),
+        clamp(-(Number(vector.x) || 0), -1, 1),
+        clamp(-(Number(vector.y) || 0), -1, 1),
         force,
       );
     });
