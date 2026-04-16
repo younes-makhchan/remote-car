@@ -7,6 +7,7 @@
 
   Protocol (text frames):
     FastAPI → ESP32: "M,left,right" mixed motor PWM (-255..255 each)
+                    "J,x,y" joystick axes (0..1023 each)
                     "S" stop
     ESP32 → FastAPI: "heartbeat" every 10s (keepalive)
 
@@ -43,7 +44,8 @@ WebSocketsClient wsClient;
 bool wsConnected = false;
 unsigned long lastHeartbeatMs = 0;
 constexpr unsigned long HEARTBEAT_INTERVAL_MS = 10000;
-constexpr int MOTOR_PWM_MAX = 255;
+constexpr int MOTOR_PWM_MAX = 250;
+constexpr int MOTOR_MIN_EFFECTIVE_PWM = 200;
 
 // ──────────────────────────────────────────────────
 //  MOTOR HELPERS
@@ -109,6 +111,67 @@ bool parseMotorMixCommand(const uint8_t* payload, size_t length, int& left, int&
     return sscanf(buffer, "M,%d,%d", &left, &right) == 2;
 }
 
+bool parseJoystickCommand(const uint8_t* payload, size_t length, int& x, int& y) {
+    if (length < 5 || payload[0] != 'J') return false;
+    char buffer[32];
+    size_t copyLen = length < sizeof(buffer) - 1 ? length : sizeof(buffer) - 1;
+    memcpy(buffer, payload, copyLen);
+    buffer[copyLen] = '\0';
+    return sscanf(buffer, "J,%d,%d", &x, &y) == 2;
+}
+
+int clampJoystickAxis(int value) {
+    if (value < 0) return 0;
+    if (value > 1023) return 1023;
+    return value;
+}
+
+int mapRange(int value, int inMin, int inMax, int outMin, int outMax) {
+    long numerator = static_cast<long>(value - inMin) * (outMax - outMin);
+    long denominator = (inMax - inMin);
+    return outMin + static_cast<int>(numerator / denominator);
+}
+
+int applyMinEffectivePwm(int value) {
+    return value < MOTOR_MIN_EFFECTIVE_PWM ? 0 : value;
+}
+
+void driveFromJoystick(int rawX, int rawY) {
+    int xAxis = clampJoystickAxis(rawX);
+    int yAxis = clampJoystickAxis(rawY);
+    int leftPwm = 0;
+    int rightPwm = 0;
+    bool forwardDirection = true;
+
+    if (yAxis < 470) {
+        leftPwm = mapRange(yAxis, 470, 0, 0, MOTOR_PWM_MAX);
+        rightPwm = leftPwm;
+        forwardDirection = false;
+    } else if (yAxis > 550) {
+        leftPwm = mapRange(yAxis, 550, 1023, 0, MOTOR_PWM_MAX);
+        rightPwm = leftPwm;
+        forwardDirection = true;
+    }
+
+    if (xAxis < 470) {
+        int xMapped = mapRange(xAxis, 470, 0, 0, MOTOR_PWM_MAX);
+        leftPwm += xMapped;
+        rightPwm -= xMapped;
+    } else if (xAxis > 550) {
+        int xMapped = mapRange(xAxis, 550, 1023, 0, MOTOR_PWM_MAX);
+        leftPwm -= xMapped;
+        rightPwm += xMapped;
+    }
+
+    leftPwm = applyMinEffectivePwm(constrain(leftPwm, 0, MOTOR_PWM_MAX));
+    rightPwm = applyMinEffectivePwm(constrain(rightPwm, 0, MOTOR_PWM_MAX));
+
+    int logicalLeft = forwardDirection ? leftPwm : -leftPwm;
+    int logicalRight = forwardDirection ? rightPwm : -rightPwm;
+    Serial.printf("[JOYSTICK] x=%d y=%d left=%d right=%d\n", xAxis, yAxis, logicalLeft, logicalRight);
+    driveMotors(logicalLeft, logicalRight);
+}
+
 // ──────────────────────────────────────────────────
 //  WEBSOCKET EVENT HANDLER
 //  Called by the library on every event.
@@ -148,6 +211,17 @@ void onWebSocketEvent(WStype_t type, uint8_t* payload, size_t length) {
                     driveMotors(left, right);
                 } else {
                     Serial.println("[MOTOR MIX] parse error");
+                }
+                break;
+            }
+
+            if (cmd == 'J') {
+                int x = 512;
+                int y = 512;
+                if (parseJoystickCommand(payload, length, x, y)) {
+                    driveFromJoystick(x, y);
+                } else {
+                    Serial.println("[JOYSTICK] parse error");
                 }
                 break;
             }

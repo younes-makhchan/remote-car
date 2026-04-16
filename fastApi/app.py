@@ -41,7 +41,8 @@ ESP_HEARTBEAT_INTERVAL = 10.0
 ESP_HEARTBEAT_TIMEOUT = ESP_HEARTBEAT_INTERVAL * 3
 CTRL_HEARTBEAT_INTERVAL = 2.0
 CTRL_HEARTBEAT_TIMEOUT = CTRL_HEARTBEAT_INTERVAL * 3
-MOTOR_POWER_MAX = 255
+JOYSTICK_AXIS_MIN = 0
+JOYSTICK_AXIS_MAX = 1023
 
 
 def setup_logging() -> logging.Logger:
@@ -71,12 +72,12 @@ def log_event(level: int, component: str, message: str, **fields):
     log.log(level, message, extra={"component": component})
 
 
-def clamp_motor_power(val: int) -> int:
-    return max(-MOTOR_POWER_MAX, min(MOTOR_POWER_MAX, int(val)))
+def clamp_joystick_axis(val: int) -> int:
+    return max(JOYSTICK_AXIS_MIN, min(JOYSTICK_AXIS_MAX, int(val)))
 
 
-def format_motor_mix_command(left: int, right: int) -> str:
-    return f"M,{clamp_motor_power(left)},{clamp_motor_power(right)}"
+def format_joystick_command(x: int, y: int) -> str:
+    return f"J,{clamp_joystick_axis(x)},{clamp_joystick_axis(y)}"
 
 def _parse_stun_servers(raw: str) -> list[str]:
     values = [part.strip() for part in raw.split(",") if part.strip()]
@@ -273,11 +274,11 @@ class ControllerManager:
             payload.update(extra)
         await self._safe_send(payload)
 
-    async def set_drive_mix(self, left: int, right: int, label: Optional[str] = None) -> bool:
+    async def set_drive_stick(self, x: int, y: int, label: Optional[str] = None) -> bool:
         await self.stop_drive(send_stop=False)
-        sent = await self.esp.send(format_motor_mix_command(left, right))
+        sent = await self.esp.send(format_joystick_command(x, y))
         if sent:
-            self.current_dir = label or f"{clamp_motor_power(left)}/{clamp_motor_power(right)}"
+            self.current_dir = label or f"{clamp_joystick_axis(x)}/{clamp_joystick_axis(y)}"
         return sent
 
     async def stop_drive(self, send_stop: bool = True) -> bool:
@@ -516,40 +517,38 @@ async def controller_endpoint(ws: WebSocket):
                 await controller.send_status()
                 continue
 
-            if msg_type == "drive_analog":
-                left = msg.get("left")
-                right = msg.get("right")
-                if not isinstance(left, (int, float)) or not isinstance(right, (int, float)):
-                    log_event(logging.WARNING, "ctrl", "rejected drive_analog bad value", left=left, right=right)
-                    await controller.send_ack("drive_analog", "error", reason="bad_value")
+            if msg_type == "drive_stick":
+                x = msg.get("x")
+                y = msg.get("y")
+                if not isinstance(x, (int, float)) or not isinstance(y, (int, float)):
+                    log_event(logging.WARNING, "ctrl", "rejected drive_stick bad value", x=x, y=y)
+                    await controller.send_ack("drive_stick", "error", reason="bad_value")
                     continue
                 if not esp32.connected:
-                    log_event(logging.WARNING, "ctrl", "rejected drive_analog; esp offline", left=left, right=right)
-                    await controller.send_ack("drive_analog", "error", reason="esp_offline")
+                    log_event(logging.WARNING, "ctrl", "rejected drive_stick; esp offline", x=x, y=y)
+                    await controller.send_ack("drive_stick", "error", reason="esp_offline")
                     continue
-                clamped_left = clamp_motor_power(round(left))
-                clamped_right = clamp_motor_power(round(right))
-                log_event(logging.INFO, "ctrl", f"cright {clamped_right} cleft {clamped_left} left {left}  right {right}", left=left, right=right)
-
+                clamped_x = clamp_joystick_axis(round(x))
+                clamped_y = clamp_joystick_axis(round(y))
                 label = str(msg.get("label") or "").strip().upper() or None
-                sent = await controller.set_drive_mix(clamped_left, clamped_right, label=label)
+                sent = await controller.set_drive_stick(clamped_x, clamped_y, label=label)
                 if not sent:
                     log_event(
                         logging.WARNING,
                         "ctrl",
-                        "drive_analog send failed; esp offline",
-                        left=clamped_left,
-                        right=clamped_right,
+                        "drive_stick send failed; esp offline",
+                        x=clamped_x,
+                        y=clamped_y,
                         label=label,
                     )
-                    await controller.send_ack("drive_analog", "error", reason="esp_offline")
+                    await controller.send_ack("drive_stick", "error", reason="esp_offline")
                     continue
-                log_event(logging.INFO, "ctrl", "drive_analog accepted", left=clamped_left, right=clamped_right, label=label)
+                log_event(logging.INFO, "ctrl", "drive_stick accepted", x=clamped_x, y=clamped_y, label=label)
                 await controller.send_ack(
-                    "drive_analog",
+                    "drive_stick",
                     "ok",
-                    left=clamped_left,
-                    right=clamped_right,
+                    x=clamped_x,
+                    y=clamped_y,
                     label=label,
                 )
                 await controller.send_status()

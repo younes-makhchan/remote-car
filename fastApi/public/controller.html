@@ -295,23 +295,17 @@
 
   const JOYSTICK_X_DEADZONE = 0.18;
   const JOYSTICK_Y_DEADZONE = 0.18;
-  const JOYSTICK_PWM_MAX = 240;
-  const JOYSTICK_PWM_MIN_EFFECTIVE = 70;
   const JOYSTICK_NIPPLE_SIZE = 76;
+  const JOYSTICK_AXIS_CENTER = 512;
+  const JOYSTICK_AXIS_MAX = 1023;
 
   function clamp(value, min, max) {
     return Math.min(max, Math.max(min, value));
   }
 
-  function axisToPwm(value, deadzone) {
-    const magnitude = Math.abs(value);
-    if (magnitude <= deadzone) return 0;
-    const scaledRatio = clamp((magnitude - deadzone) / (1 - deadzone), 0, 1);
-    return Math.round(scaledRatio * JOYSTICK_PWM_MAX);
-  }
-
-  function applyMotorCutoff(value) {
-    return value < JOYSTICK_PWM_MIN_EFFECTIVE ? 0 : value;
+  function normalizeAxisToAdc(value) {
+    const scaled = JOYSTICK_AXIS_CENTER - (clamp(value, -1, 1) * (JOYSTICK_AXIS_CENTER - 1));
+    return clamp(Math.round(scaled), 0, JOYSTICK_AXIS_MAX);
   }
 
   function clearJoystickDriveState(sendStopCommand = false) {
@@ -484,56 +478,25 @@ function buildRTCConfig() {
     return `${vertical}${horizontal}` || vertical || horizontal || 'IDLE';
   }
 
-  function computeDriveMix(x, y, force) {
-    // Direct browser port of the Arduino receiver algorithm: Y sets shared
-    // forward/backward speed and X biases left/right motor PWM.
+  function computeJoystickPayload(x, y, force) {
     const effectiveX = clamp(x * force, -1, 1);
     const effectiveY = clamp(y * force, -1, 1);
-    const label = resolveJoystickLabel(effectiveX, effectiveY);
-    let direction = 0;
-    let left = 0;
-    let right = 0;
-
-    if (effectiveY <= -JOYSTICK_Y_DEADZONE) {
-      const baseSpeed = axisToPwm(effectiveY, JOYSTICK_Y_DEADZONE);
-      left = baseSpeed;
-      right = baseSpeed;
-      direction = 1;
-    } else if (effectiveY >= JOYSTICK_Y_DEADZONE) {
-      const baseSpeed = axisToPwm(effectiveY, JOYSTICK_Y_DEADZONE);
-      left = baseSpeed;
-      right = baseSpeed;
-      direction = -1;
-    }
-
-    if (effectiveX >= JOYSTICK_X_DEADZONE) {
-      const steering = axisToPwm(effectiveX, JOYSTICK_X_DEADZONE);
-      left -= steering;
-      right += steering;
-    } else if (effectiveX <= -JOYSTICK_X_DEADZONE) {
-      const steering = axisToPwm(effectiveX, JOYSTICK_X_DEADZONE);
-      left += steering;
-      right -= steering;
-    }
-
-    left = applyMotorCutoff(clamp(left, 0, JOYSTICK_PWM_MAX));
-    right = applyMotorCutoff(clamp(right, 0, JOYSTICK_PWM_MAX));
     return {
-      left: direction < 0 ? -left : left,
-      right: direction < 0 ? -right : right,
-      label,
+      x: normalizeAxisToAdc(effectiveX),
+      y: normalizeAxisToAdc(effectiveY),
+      label: resolveJoystickLabel(effectiveX, effectiveY),
     };
   }
 
-  function sendAnalogDrive(left, right, label) {
-    const nextMix = { left, right, label };
+  function sendStickDrive(xAxis, yAxis, label) {
+    const nextMix = { xAxis, yAxis, label };
     if (joystickSentMix &&
-        joystickSentMix.left === left &&
-        joystickSentMix.right === right &&
+        joystickSentMix.xAxis === xAxis &&
+        joystickSentMix.yAxis === yAxis &&
         joystickSentMix.label === label) {
       return true;
     }
-    if (!sendWs({ type: 'drive_analog', left, right, label })) {
+    if (!sendWs({ type: 'drive_stick', x: xAxis, y: yAxis, label })) {
       flashError('NO LINK');
       return false;
     }
@@ -543,17 +506,12 @@ function buildRTCConfig() {
   }
 
   function applyJoystickDrive(x, y, force) {
-    const driveMix = computeDriveMix(x, y, force);
-    if (driveMix.left === 0 && driveMix.right === 0) {
-      if (driveMix.label === 'IDLE') {
-        clearJoystickDriveState(true);
-      } else {
-        joystickSentMix = null;
-        sendStop();
-      }
+    const stick = computeJoystickPayload(x, y, force);
+    if (stick.label === 'IDLE') {
+      clearJoystickDriveState(true);
       return;
     }
-    sendAnalogDrive(driveMix.left, driveMix.right, driveMix.label);
+    sendStickDrive(stick.x, stick.y, stick.label);
   }
 
   function sendWs(payload) {
@@ -623,7 +581,7 @@ function buildRTCConfig() {
     fulfillLatency(payload.cmd);
     if (payload.status !== 'ok') {
       flashError(payload.reason || 'FAILED');
-      if (payload.cmd === 'drive_analog' || payload.cmd === 'stop') { stopArmed = false; resetJoystick(false); }
+      if (payload.cmd === 'drive_stick' || payload.cmd === 'stop') { stopArmed = false; resetJoystick(false); }
       return;
     }
     switch (payload.cmd) {
