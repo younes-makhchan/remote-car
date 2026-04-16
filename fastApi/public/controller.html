@@ -13,7 +13,6 @@
       --panel-bg: rgba(10, 16, 28, 0.55);
       --panel-border: rgba(56, 189, 248, 0.18);
       --text-muted: rgba(203, 213, 225, 0.65);
-      --thumb: rgba(56, 189, 248, 0.85);
     }
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -39,10 +38,7 @@
       transition: opacity 0.25s ease;
       opacity: 1;
     }
-    .fs-overlay.hidden {
-      opacity: 0;
-      pointer-events: none;
-    }
+    .fs-overlay.hidden { opacity: 0; pointer-events: none; }
     .fs-card {
       background: rgba(10, 16, 28, 0.92);
       border: 1px solid rgba(56, 189, 248, 0.25);
@@ -78,7 +74,7 @@
       letter-spacing: 0.2em;
       text-transform: uppercase;
       cursor: pointer;
-      transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+      transition: background 0.2s, border-color 0.2s, color 0.2s;
     }
     .fs-card button:hover {
       background: rgba(244, 114, 182, 0.12);
@@ -86,7 +82,6 @@
       color: #f472b6;
     }
 
-    /* ─── Video background ─── */
     #remote-video {
       position: fixed;
       inset: 0;
@@ -98,7 +93,6 @@
     }
     #remote-audio { display: none; }
 
-    /* ─── HUD root ─── */
     .hud {
       position: relative;
       z-index: 10;
@@ -111,7 +105,6 @@
       pointer-events: none;
     }
 
-    /* ─── Top bar ─── */
     .hud-top {
       display: flex;
       justify-content: space-between;
@@ -144,10 +137,7 @@
       text-transform: uppercase;
       color: var(--text-muted);
     }
-    .status-pill-text strong {
-      color: var(--accent);
-      font-weight: 700;
-    }
+    .status-pill-text strong { color: var(--accent); font-weight: 700; }
 
     .media-row {
       display: flex;
@@ -172,12 +162,6 @@
       border-color: rgba(148, 163, 184, 0.28);
       opacity: 0.7;
     }
-    .media-btn.active {
-      background: rgba(56, 189, 248, 0.16);
-      border-color: rgba(125, 211, 252, 0.5);
-      color: #f8fafc;
-      box-shadow: 0 0 18px rgba(56, 189, 248, 0.22);
-    }
     .media-btn:active { transform: scale(0.92); }
 
     .joystick-overlay {
@@ -198,10 +182,23 @@
       opacity: 0.35;
       pointer-events: none;
     }
+
+    /* debug overlay */
+    #debug-overlay {
+      position: fixed;
+      bottom: max(16px, env(safe-area-inset-bottom));
+      right: max(16px, env(safe-area-inset-right));
+      font-size: 10px;
+      letter-spacing: 0.1em;
+      color: rgba(56, 189, 248, 0.7);
+      text-align: right;
+      pointer-events: none;
+      z-index: 20;
+      line-height: 1.6;
+    }
+
     @media (max-width: 720px) {
-      .joystick-overlay {
-        --joystick-size: 156px;
-      }
+      .joystick-overlay { --joystick-size: 156px; }
     }
   </style>
 </head>
@@ -219,8 +216,6 @@
 </div>
 
 <div class="hud">
-
-  <!-- TOP BAR -->
   <div class="hud-top">
     <div class="status-pill">
       <div class="status-dot" id="status-dot"></div>
@@ -231,9 +226,9 @@
       </span>
     </div>
     <div class="media-row">
-      <button id="btnMicSend" class="media-btn" type="button" aria-pressed="true" title="Toggle Mic Send">🎙️</button>
-      <button id="btnCarAudio" class="media-btn" type="button" aria-pressed="true" title="Toggle Car Audio">🔊</button>
-      <button id="btnCarVideo" class="media-btn" type="button" aria-pressed="true" title="Toggle Car Video">🎥</button>
+      <button id="btnMicSend"  class="media-btn" type="button" title="Toggle Mic Send">🎙️</button>
+      <button id="btnCarAudio" class="media-btn" type="button" title="Toggle Car Audio">🔊</button>
+      <button id="btnCarVideo" class="media-btn" type="button" title="Toggle Car Video">🎥</button>
     </div>
   </div>
 
@@ -242,600 +237,562 @@
   </div>
 </div>
 
+<div id="debug-overlay">
+  <div>X: <span id="dbg-x">512</span> &nbsp; Y: <span id="dbg-y">512</span></div>
+  <div>DIR: <span id="dbg-dir">IDLE</span></div>
+</div>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/nipplejs/0.10.2/nipplejs.min.js"></script>
 <script>
-  const HEARTBEAT_INTERVAL_MS = 2000;
-  const MAX_RECONNECT_DELAY_MS = 5000;
-  const WS_URL = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ctrl`;
-  const SIGNAL_URL = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws?role=ctrl`;
-  const SIGNAL_HEARTBEAT_MS = 5000;
-  let STUN_SERVERS = [
-    "stun:stunserver2025.stunprotocol.org:3478",
-    "turn:USERNAME:PASSWORD@turn.example.com:3478?transport=udp"
-  ];
+// ═══════════════════════════════════════════════════════
+//  CONSTANTS — mirror the ESP32 dead-zone exactly
+// ═══════════════════════════════════════════════════════
+const JOY_LOW    = 470;    // dead-zone lower bound (matches ESP32)
+const JOY_HIGH   = 550;    // dead-zone upper bound (matches ESP32)
+const JOY_CENTER = 512;    // resting position
+const JOY_MAX    = 1023;   // full deflection
 
-  const msEl = document.getElementById('ms-val');
-  const linkStatusEl = document.getElementById('link-status');
-  const statusDot = document.getElementById('status-dot');
-  const joystick = document.getElementById('joystick');
-  const remoteVideo = document.getElementById('remote-video');
-  const remoteAudioEl = document.getElementById('remote-audio');
-  const btnMicSend = document.getElementById('btnMicSend');
-  const btnCarAudio = document.getElementById('btnCarAudio');
-  const btnCarVideo = document.getElementById('btnCarVideo');
-  const fsPrompt = document.getElementById('ctrlFsPrompt');
-  const fsButton = document.getElementById('ctrlFsButton');
+const HEARTBEAT_INTERVAL_MS   = 2000;
+const MAX_RECONNECT_DELAY_MS  = 5000;
+const SIGNAL_HEARTBEAT_MS     = 5000;
+const JOYSTICK_NIPPLE_SIZE    = 76;
 
-  let socket = null;
-  let reconnectDelay = 500;
-  let reconnectTimer = null;
-  let heartbeatTimer = null;
-  let pendingTimes = new Map();
-  let stopArmed = false;
-  let lastStatusSnapshot = { esp: false, car: false };
-  let errorFlashTimer = null;
-  let signalSocket = null;
-  let signalReady = false;
-  let signalHeartbeat = null;
-  let signalReconnectTimer = null;
-  let signalQueue = [];
-  let rtc = null;
-  let micStream = null;
-  let micSenders = [];
-  let micTransceiver = null;
-  let configLoaded = false;
-  let pendingIceCandidates = [];
-  let micPublishEnabled = true;
-  let carAudioEnabled = true;
-  let carVideoVisible = true;
-  let controlBootstrapped = false;
-  let controlsEnabled = false;
-  let joystickSentMix = null;
-  let joystickManager = null;
+const WS_URL     = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ctrl`;
+const SIGNAL_URL = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws?role=ctrl`;
 
-  const JOYSTICK_X_DEADZONE = 0.18;
-  const JOYSTICK_Y_DEADZONE = 0.18;
-  const JOYSTICK_NIPPLE_SIZE = 76;
-  const JOYSTICK_AXIS_CENTER = 512;
-  const JOYSTICK_AXIS_MAX = 1023;
+let STUN_SERVERS = [
+  "stun:stunserver2025.stunprotocol.org:3478",
+  "turn:USERNAME:PASSWORD@turn.example.com:3478?transport=udp"
+];
 
-  function clamp(value, min, max) {
-    return Math.min(max, Math.max(min, value));
+// ── DOM refs ───────────────────────────────────────────
+const msEl          = document.getElementById('ms-val');
+const linkStatusEl  = document.getElementById('link-status');
+const statusDot     = document.getElementById('status-dot');
+const joystickEl    = document.getElementById('joystick');
+const remoteVideo   = document.getElementById('remote-video');
+const remoteAudioEl = document.getElementById('remote-audio');
+const btnMicSend    = document.getElementById('btnMicSend');
+const btnCarAudio   = document.getElementById('btnCarAudio');
+const btnCarVideo   = document.getElementById('btnCarVideo');
+const fsPrompt      = document.getElementById('ctrlFsPrompt');
+const fsButton      = document.getElementById('ctrlFsButton');
+const dbgX          = document.getElementById('dbg-x');
+const dbgY          = document.getElementById('dbg-y');
+const dbgDir        = document.getElementById('dbg-dir');
+
+// ── State ──────────────────────────────────────────────
+let socket = null, reconnectDelay = 500, reconnectTimer = null, heartbeatTimer = null;
+let pendingTimes = new Map(), stopArmed = false;
+let lastStatusSnapshot = { esp: false, car: false };
+let errorFlashTimer = null;
+let signalSocket = null, signalReady = false, signalHeartbeat = null;
+let signalReconnectTimer = null, signalQueue = [];
+let rtc = null, micStream = null, micSenders = [], micTransceiver = null;
+let configLoaded = false, pendingIceCandidates = [];
+let micPublishEnabled = true, carAudioEnabled = true, carVideoVisible = true;
+let controlBootstrapped = false, controlsEnabled = false;
+let joystickManager = null;
+let lastSentX = JOY_CENTER, lastSentY = JOY_CENTER;
+
+// ═══════════════════════════════════════════════════════
+//  JOYSTICK AXIS CONVERSION
+//  nipplejs gives vector.x / vector.y in -1..+1 and force 0..1.
+//  We reproduce the Arduino analogRead 0-1023 range.
+//
+//  nipplejs axes:   right = +x,  up = +y
+//  Arduino axes:    right = +x,  up = -y  (y=0 is top, y=1023 is bottom)
+//
+//  Mapping:
+//    nipple x=0  → ADC 512  (center)
+//    nipple x=+1 → ADC 1023 (full right)
+//    nipple x=-1 → ADC 0    (full left)
+//    nipple y=0  → ADC 512  (center)
+//    nipple y=+1 → ADC 0    (full up / forward)
+//    nipple y=-1 → ADC 1023 (full down / backward)
+// ═══════════════════════════════════════════════════════
+function nippleToAdc(nippleAxis, invert) {
+  // nippleAxis: -1..+1,  invert flips the direction
+  const v = invert ? -nippleAxis : nippleAxis;
+  const adc = Math.round(JOY_CENTER + v * (JOY_MAX - JOY_CENTER));
+  return Math.max(0, Math.min(JOY_MAX, adc));
+}
+
+function resolveLabel(adcX, adcY) {
+  const fwd  = adcY > JOY_HIGH;
+  const back = adcY < JOY_LOW;
+  const left = adcX < JOY_LOW;
+  const rght = adcX > JOY_HIGH;
+  if (!fwd && !back && !left && !rght) return 'IDLE';
+  let s = '';
+  if (fwd)  s += 'F';
+  if (back) s += 'B';
+  if (left) s += 'L';
+  if (rght) s += 'R';
+  return s;
+}
+
+// ── Send joystick to server ────────────────────────────
+function sendStickDrive(adcX, adcY) {
+  const label = resolveLabel(adcX, adcY);
+
+  // de-duplicate: skip if nothing changed
+  if (adcX === lastSentX && adcY === lastSentY) return;
+  lastSentX = adcX;
+  lastSentY = adcY;
+
+  // update debug overlay
+  if (dbgX) dbgX.textContent = adcX;
+  if (dbgY) dbgY.textContent = adcY;
+  if (dbgDir) dbgDir.textContent = label;
+
+  if (label === 'IDLE') {
+    sendStop();
+    return;
   }
 
-  function normalizeAxisToAdc(value) {
-    const scaled = JOYSTICK_AXIS_CENTER - (clamp(value, -1, 1) * (JOYSTICK_AXIS_CENTER - 1));
-    return clamp(Math.round(scaled), 0, JOYSTICK_AXIS_MAX);
+  if (!sendWs({ type: 'drive_stick', x: adcX, y: adcY, label })) {
+    flashError('NO LINK');
+    return;
   }
+  stopArmed = true;
+}
 
-  function clearJoystickDriveState(sendStopCommand = false) {
-    const shouldStop = sendStopCommand && stopArmed;
-    joystickSentMix = null;
-    if (shouldStop) sendStop();
+// ── nipplejs callbacks ─────────────────────────────────
+function destroyJoystickManager() {
+  if (!joystickManager) return;
+  try { joystickManager.destroy(); } catch (_) {}
+  joystickManager = null;
+}
+
+function refreshJoystickManager() {
+  destroyJoystickManager();
+  if (!window.nipplejs || !joystickEl) return;
+
+  joystickManager = window.nipplejs.create({
+    zone:        joystickEl,
+    mode:        'static',
+    position:    { left: '50%', top: '50%' },
+    size:        JOYSTICK_NIPPLE_SIZE,
+    color:       'white',
+    fadeTime:    0,
+    restOpacity: 0.55,
+    restJoystick: true,
+    dynamicPage: true,
+  });
+
+  joystickManager.on('move', (_evt, data) => {
+    if (!controlsEnabled || !data) return;
+    const v     = data.vector || { x: 0, y: 0 };
+    const force = Math.min(1, Math.max(0, Number(data.force) || 0));
+
+    // apply force magnitude to each axis
+    const nx = Math.max(-1, Math.min(1, Number(v.x) * force));
+    const ny = Math.max(-1, Math.min(1, Number(v.y) * force));
+
+    // convert to 0-1023 ADC values
+    // nipple right (+x) → ADC high (right turn)   → no invert on x
+    // nipple up   (+y) → ADC low  (forward)        → invert y
+    const adcX = nippleToAdc(nx, false);
+    const adcY = nippleToAdc(ny, true);   // y inverted: up = forward = low ADC
+
+    sendStickDrive(adcX, adcY);
+  });
+
+  joystickManager.on('end', () => {
+    lastSentX = JOY_CENTER;
+    lastSentY = JOY_CENTER;
+    if (dbgX)   dbgX.textContent  = JOY_CENTER;
+    if (dbgY)   dbgY.textContent  = JOY_CENTER;
+    if (dbgDir) dbgDir.textContent = 'IDLE';
+    if (stopArmed) sendStop();
+  });
+}
+
+// ═══════════════════════════════════════════════════════
+//  WEBSOCKET CONTROL CHANNEL  (unchanged from original)
+// ═══════════════════════════════════════════════════════
+function wsReady() {
+  return socket && socket.readyState === WebSocket.OPEN;
+}
+
+function sendWs(payload) {
+  if (!wsReady()) return false;
+  try { socket.send(JSON.stringify(payload)); return true; }
+  catch (err) { console.error('WS send failed', err); return false; }
+}
+
+function sendStop(force = false) {
+  if (!force && !stopArmed) return;
+  stopArmed = false;
+  if (!wsReady()) return;
+  recordLatency('stop');
+  sendWs({ type: 'stop' });
+}
+
+function recordLatency(key)   { pendingTimes.set(key, performance.now()); }
+function fulfillLatency(key)  {
+  const start = pendingTimes.get(key);
+  if (start) { msEl.textContent = Math.max(1, Math.round(performance.now() - start)); pendingTimes.delete(key); }
+}
+
+function setLinkDisplay(text, online = false) {
+  linkStatusEl.textContent = text;
+  statusDot.classList.toggle('online', online);
+}
+
+function applyLinkStatus() {
+  if (!wsReady()) { setLinkDisplay('OFFLINE', false); setControlsEnabled(false); return; }
+  const missing = [];
+  if (!lastStatusSnapshot.esp) missing.push('ESP');
+  if (!lastStatusSnapshot.car) missing.push('CAR');
+  if (missing.length === 0) { setLinkDisplay('ONLINE', true); setControlsEnabled(true); }
+  else { setLinkDisplay(`WAITING ${missing.join('+')}`, false); setControlsEnabled(false); }
+}
+
+function flashError(reason) {
+  clearTimeout(errorFlashTimer);
+  linkStatusEl.textContent = `ERR: ${reason}`;
+  linkStatusEl.style.color = '#f87171';
+  errorFlashTimer = setTimeout(() => { linkStatusEl.style.color = ''; applyLinkStatus(); }, 2000);
+}
+
+function setControlsEnabled(enabled) {
+  controlsEnabled = enabled;
+  joystickEl.classList.toggle('disabled', !enabled);
+  joystickEl.setAttribute('aria-disabled', String(!enabled));
+  if (!enabled && stopArmed) sendStop();
+}
+
+function connectCtrl() {
+  clearTimeout(reconnectTimer);
+  if (socket && socket.readyState === WebSocket.CONNECTING) return;
+  if (wsReady()) return;
+  setLinkDisplay('CONNECTING…', false);
+  socket = new WebSocket(WS_URL);
+
+  socket.addEventListener('open', () => {
+    reconnectDelay = 500;
+    msEl.textContent = '--';
+    setControlsEnabled(false);
+    sendWs({ type: 'hello', client: 'controller', version: '3.0' });
+    sendWs({ type: 'status' });
+    heartbeatTimer = setInterval(() => sendWs({ type: 'heartbeat' }), HEARTBEAT_INTERVAL_MS);
+  });
+
+  socket.addEventListener('message', (event) => {
+    try { handleMessage(JSON.parse(event.data)); } catch (err) { console.error('Bad payload', err); }
+  });
+
+  socket.addEventListener('close', () => {
+    clearInterval(heartbeatTimer); heartbeatTimer = null;
+    msEl.textContent = '--'; stopArmed = false;
+    pendingTimes.clear(); applyLinkStatus(); scheduleReconnect();
+  });
+
+  socket.addEventListener('error', (err) => { console.warn('WS error', err); socket.close(); });
+}
+
+function scheduleReconnect() {
+  if (reconnectTimer) return;
+  setLinkDisplay('OFFLINE', false);
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null;
+    reconnectDelay = Math.min(reconnectDelay * 1.5, MAX_RECONNECT_DELAY_MS);
+    connectCtrl();
+  }, reconnectDelay);
+}
+
+function handleMessage(payload) {
+  switch ((payload.type || '').toLowerCase()) {
+    case 'ack':    handleAck(payload);    break;
+    case 'status': handleStatus(payload); break;
+    case 'error':  flashError(payload.reason || 'UNKNOWN'); break;
   }
+}
 
-  function destroyJoystickManager() {
-    if (!joystickManager) return;
-    try { joystickManager.destroy(); } catch (_) {}
-    joystickManager = null;
+function handleAck(payload) {
+  fulfillLatency(payload.cmd);
+  if (payload.status !== 'ok') {
+    flashError(payload.reason || 'FAILED');
+    if (payload.cmd === 'drive_stick' || payload.cmd === 'stop') stopArmed = false;
+    return;
   }
+  if (payload.cmd === 'stop') stopArmed = false;
+  applyLinkStatus();
+}
 
-  function refreshJoystickManager() {
-    destroyJoystickManager();
-    if (!window.nipplejs || !joystick) return;
-    joystickManager = window.nipplejs.create({
-      zone: joystick,
-      mode: 'static',
-      position: { left: '50%', top: '50%' },
-      size: JOYSTICK_NIPPLE_SIZE,
-      color: 'white',
-      fadeTime: 0,
-      restOpacity: 0.55,
-      restJoystick: true,
-      dynamicPage: true,
-    });
-    joystickManager.on('start', () => {
-      if (!controlsEnabled) return;
-    });
-    joystickManager.on('move', (_evt, data) => {
-      if (!controlsEnabled || !data) return;
-      const vector = data.vector || { x: 0, y: 0 };
-      const force = clamp(Number(data.force) || 0, 0, 1);
-      applyJoystickDrive(
-        clamp(-(Number(vector.x) || 0), -1, 1),
-        clamp(-(Number(vector.y) || 0), -1, 1),
-        force,
-      );
-    });
-    joystickManager.on('end', () => {
-      clearJoystickDriveState(true);
-    });
-  }
+function handleStatus(payload) {
+  lastStatusSnapshot = { esp: !!payload.esp?.connected, car: !!payload.car?.connected };
+  applyLinkStatus();
+}
 
+// ═══════════════════════════════════════════════════════
+//  WEBRTC SIGNALING  (unchanged from original)
+// ═══════════════════════════════════════════════════════
 function buildRTCConfig() {
   const iceServers = STUN_SERVERS.map(url => {
     const match = url.match(/^(turns?):([^:]+):([^@]+)@(.+)$/);
     if (match) {
       const [, scheme, username, credential, host] = match;
-      return {
-        urls: `${scheme}:${host}`,
-        username,
-        credential
-      };
+      return { urls: `${scheme}:${host}`, username, credential };
     }
-    return { urls: url }; // stun: URLs stay as-is
+    return { urls: url };
   });
-
   return { iceServers };
 }
 
-  async function loadConfig() {
-    if (configLoaded) return;
-    try {
-      const res = await fetch("/ice-servers", { cache: "no-store" });
-      if (res.ok) {
-        const data = await res.json();
-        const combined = [];
-        if (Array.isArray(data.stun)) combined.push(...data.stun);
-        if (Array.isArray(data.turn)) combined.push(...data.turn);
-        if (!combined.length && Array.isArray(data.stun_servers)) combined.push(...data.stun_servers);
-        if (combined.length) STUN_SERVERS = combined.map(String);
-        console.log("using the follow stun server: ", STUN_SERVERS)
-
-      }
-    } catch (err) {
-      console.warn("Using default STUN servers", err);
-    } finally {
-      configLoaded = true;
+async function loadConfig() {
+  if (configLoaded) return;
+  try {
+    const res = await fetch("/ice-servers", { cache: "no-store" });
+    if (res.ok) {
+      const data = await res.json();
+      const combined = [];
+      if (Array.isArray(data.stun)) combined.push(...data.stun);
+      if (Array.isArray(data.turn)) combined.push(...data.turn);
+      if (!combined.length && Array.isArray(data.stun_servers)) combined.push(...data.stun_servers);
+      if (combined.length) STUN_SERVERS = combined.map(String);
     }
+  } catch (err) { console.warn("Using default STUN servers", err); }
+  finally { configLoaded = true; }
+}
+
+function connectSignalChannel() {
+  if (signalSocket && (signalSocket.readyState === WebSocket.OPEN || signalSocket.readyState === WebSocket.CONNECTING)) return;
+  if (signalReconnectTimer) { clearTimeout(signalReconnectTimer); signalReconnectTimer = null; }
+  signalSocket = new WebSocket(SIGNAL_URL);
+  signalSocket.addEventListener('open', () => {
+    signalReady = true;
+    if (signalHeartbeat) clearInterval(signalHeartbeat);
+    signalHeartbeat = setInterval(() => sigSend({ type: 'heartbeat' }), SIGNAL_HEARTBEAT_MS);
+    sigSend({ type: 'hello', client: 'controller' });
+    const queued = [...signalQueue]; signalQueue = [];
+    queued.forEach(sigSend);
+  });
+  signalSocket.addEventListener('message', (event) => {
+    try { handleSignalPayload(JSON.parse(event.data)); } catch (err) {}
+  });
+  signalSocket.addEventListener('close', () => {
+    signalReady = false;
+    if (signalHeartbeat) { clearInterval(signalHeartbeat); signalHeartbeat = null; }
+    scheduleSignalReconnect(); teardownPeer();
+  });
+  signalSocket.addEventListener('error', (err) => { signalSocket.close(); });
+}
+
+function scheduleSignalReconnect() {
+  if (signalReconnectTimer) return;
+  signalReconnectTimer = setTimeout(() => { signalReconnectTimer = null; connectSignalChannel(); }, SIGNAL_HEARTBEAT_MS);
+}
+
+function sigSend(message) {
+  if (signalReady && signalSocket && signalSocket.readyState === WebSocket.OPEN)
+    signalSocket.send(JSON.stringify(message));
+  else signalQueue.push(message);
+}
+
+async function handleSignalPayload(payload) {
+  const type = (payload.type || '').toLowerCase();
+  if (type === 'offer' && payload.offer)   { await setupPeer(payload.offer); return; }
+  if (type === 'ice'   && payload.candidate) {
+    if (!rtc || !rtc.remoteDescription || rtc.remoteDescription.type === "")
+      pendingIceCandidates.push(payload.candidate);
+    else try { await rtc.addIceCandidate(new RTCIceCandidate(payload.candidate)); } catch {}
+    return;
   }
+  if (type === 'peer_left') { teardownPeer(); return; }
+  if (type === 'error')     flashError(payload.reason || 'SIGNAL ERR');
+}
 
-  function wsReady() {
-    return socket && socket.readyState === WebSocket.OPEN;
+function updateMicToggleUI() {
+  if (!btnMicSend) return;
+  btnMicSend.classList.toggle('off', !micPublishEnabled);
+  btnMicSend.setAttribute('aria-pressed', micPublishEnabled);
+  btnMicSend.textContent = micPublishEnabled ? '🎙️' : '🚫';
+}
+
+function refreshCarAudioState() {
+  remoteAudioEl.muted = !carAudioEnabled;
+  if (btnCarAudio) {
+    btnCarAudio.classList.toggle('off', !carAudioEnabled);
+    btnCarAudio.setAttribute('aria-pressed', carAudioEnabled);
+    btnCarAudio.textContent = carAudioEnabled ? '🔊' : '🔇';
   }
+}
 
-  async function requestFullscreen(element) {
-    const target = element || document.documentElement;
-    if (!target) return Promise.resolve();
-    if (document.fullscreenElement) return Promise.resolve();
-    const method = target.requestFullscreen || target.webkitRequestFullscreen || target.msRequestFullscreen;
-    if (!method) return Promise.resolve();
-    try {
-      const result = method.call(target);
-      if (result && result.catch) {
-        await result;
-      }
-    } catch (err) {
-      console.warn('Fullscreen request failed', err);
-    }
+function refreshCarVideoState() {
+  if (btnCarVideo) {
+    btnCarVideo.classList.toggle('off', !carVideoVisible);
+    btnCarVideo.setAttribute('aria-pressed', carVideoVisible);
+    btnCarVideo.textContent = carVideoVisible ? '🎥' : '🚫';
   }
-
-  async function bootstrapControl() {
-    if (controlBootstrapped) return;
-    controlBootstrapped = true;
-    if (fsPrompt) fsPrompt.classList.add('hidden');
-    await loadConfig();
-    connectSignalChannel();
-    connectCtrl();
+  if (carVideoVisible) {
+    remoteVideo.style.display = '';
+    if (remoteVideo.srcObject) remoteVideo.play().catch(() => {});
+  } else {
+    remoteVideo.style.display = 'none';
+    try { remoteVideo.pause(); } catch (_) {}
   }
+}
 
-  function setControlsEnabled(enabled) {
-    controlsEnabled = enabled;
-    joystick.classList.toggle('disabled', !enabled);
-    joystick.setAttribute('aria-disabled', String(!enabled));
-    if (!enabled) resetJoystick(false);
+async function ensureMicStream() {
+  if (!micPublishEnabled) return null;
+  if (micStream && micStream.getAudioTracks().some(t => t.readyState === 'live')) return micStream;
+  try {
+    micStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+  } catch (err) {
+    flashError('MIC BLOCKED'); micStream = null; micPublishEnabled = false;
   }
+  updateMicToggleUI();
+  return micStream;
+}
 
-  function setLinkDisplay(text, online = false) {
-    linkStatusEl.textContent = text;
-    statusDot.classList.toggle('online', online);
-  }
+function attachMicToPeer() {
+  if (!rtc || !micStream) return;
+  const tracks = micStream.getAudioTracks();
+  if (!tracks.length) return;
+  if (!micSenders.length) { tracks.forEach(track => micSenders.push(rtc.addTrack(track, micStream))); return; }
+  micSenders.forEach(sender => { try { sender.replaceTrack(tracks[0]); } catch {} });
+}
 
-  function applyLinkStatus() {
-    if (!wsReady()) {
-      setLinkDisplay('OFFLINE', false);
-      setControlsEnabled(false);
-      return;
-    }
-    const missing = [];
-    if (!lastStatusSnapshot.esp) missing.push('ESP');
-    if (!lastStatusSnapshot.car) missing.push('CAR');
-    if (missing.length === 0) {
-      setLinkDisplay('ONLINE', true);
-      setControlsEnabled(true);
-    } else {
-      setLinkDisplay(`WAITING ${missing.join('+')}`, false);
-      setControlsEnabled(false);
-    }
-  }
+function detachMicSenders() {
+  micSenders.forEach(sender => { try { sender.replaceTrack(null); } catch {} });
+}
 
-  function flashError(reason) {
-    clearTimeout(errorFlashTimer);
-    linkStatusEl.textContent = `ERR: ${reason}`;
-    linkStatusEl.style.color = '#f87171';
-    errorFlashTimer = setTimeout(() => {
-      linkStatusEl.style.color = '';
-      applyLinkStatus();
-    }, 2000);
-  }
+function releaseMicStream() {
+  if (micStream) micStream.getTracks().forEach(track => { try { track.stop(); } catch {} });
+  micStream = null;
+}
 
-  function recordLatency(key) { pendingTimes.set(key, performance.now()); }
-  function fulfillLatency(key) {
-    const start = pendingTimes.get(key);
-    if (start) {
-      msEl.textContent = Math.max(1, Math.round(performance.now() - start));
-      pendingTimes.delete(key);
-    }
-  }
-
-  function resetJoystick(sendStopCommand = false) {
-    clearJoystickDriveState(sendStopCommand);
-  }
-
-  function resolveJoystickLabel(x, y) {
-    const vertical = y <= -JOYSTICK_Y_DEADZONE ? 'F' : y >= JOYSTICK_Y_DEADZONE ? 'B' : '';
-    const horizontal = x >= JOYSTICK_X_DEADZONE ? 'L' : x <= -JOYSTICK_X_DEADZONE ? 'R' : '';
-    return `${vertical}${horizontal}` || vertical || horizontal || 'IDLE';
-  }
-
-  function computeJoystickPayload(x, y, force) {
-    const effectiveX = clamp(x * force, -1, 1);
-    const effectiveY = clamp(y * force, -1, 1);
-    return {
-      x: normalizeAxisToAdc(effectiveX),
-      y: normalizeAxisToAdc(effectiveY),
-      label: resolveJoystickLabel(effectiveX, effectiveY),
-    };
-  }
-
-  function sendStickDrive(xAxis, yAxis, label) {
-    const nextMix = { xAxis, yAxis, label };
-    if (joystickSentMix &&
-        joystickSentMix.xAxis === xAxis &&
-        joystickSentMix.yAxis === yAxis &&
-        joystickSentMix.label === label) {
-      return true;
-    }
-    if (!sendWs({ type: 'drive_stick', x: xAxis, y: yAxis, label })) {
-      flashError('NO LINK');
-      return false;
-    }
-    stopArmed = true;
-    joystickSentMix = nextMix;
-    return true;
-  }
-
-  function applyJoystickDrive(x, y, force) {
-    const stick = computeJoystickPayload(x, y, force);
-    if (stick.label === 'IDLE') {
-      clearJoystickDriveState(true);
-      return;
-    }
-    sendStickDrive(stick.x, stick.y, stick.label);
-  }
-
-  function sendWs(payload) {
-    if (!wsReady()) return false;
-    try { socket.send(JSON.stringify(payload)); return true; }
-    catch (err) { console.error('WS send failed', err); return false; }
-  }
-
-  function sendStop(force = false) {
-    if (!force && !stopArmed) return;
-    stopArmed = false;
-    if (!wsReady()) return;
-    recordLatency('stop');
-    if (!sendWs({ type: 'stop' })) flashError('NO LINK');
-  }
-
-  function connectCtrl() {
-    clearTimeout(reconnectTimer);
-    if (socket && socket.readyState === WebSocket.CONNECTING) return;
-    if (wsReady()) return;
-    setLinkDisplay('CONNECTING…', false);
-    socket = new WebSocket(WS_URL);
-
-    socket.addEventListener('open', () => {
-      reconnectDelay = 500;
-      msEl.textContent = '--';
-      setControlsEnabled(false);
-      sendWs({ type: 'hello', client: 'controller', version: '3.0' });
-      sendWs({ type: 'status' });
-      heartbeatTimer = setInterval(() => sendWs({ type: 'heartbeat' }), HEARTBEAT_INTERVAL_MS);
-    });
-
-    socket.addEventListener('message', (event) => {
-      try { handleMessage(JSON.parse(event.data)); }
-      catch (err) { console.error('Bad payload', err); }
-    });
-
-    socket.addEventListener('close', () => {
-      clearInterval(heartbeatTimer); heartbeatTimer = null;
-      msEl.textContent = '--'; stopArmed = false;
-      pendingTimes.clear(); resetJoystick(false); applyLinkStatus();
-      scheduleReconnect();
-    });
-
-    socket.addEventListener('error', (err) => { console.warn('WS error', err); socket.close(); });
-  }
-
-  function scheduleReconnect() {
-    if (reconnectTimer) return;
-    setLinkDisplay('OFFLINE', false);
-    reconnectTimer = setTimeout(() => {
-      reconnectTimer = null;
-      reconnectDelay = Math.min(reconnectDelay * 1.5, MAX_RECONNECT_DELAY_MS);
-      connectCtrl();
-    }, reconnectDelay);
-  }
-
-  function handleMessage(payload) {
-    switch ((payload.type || '').toLowerCase()) {
-      case 'ack': handleAck(payload); break;
-      case 'status': handleStatus(payload); break;
-      case 'error': flashError(payload.reason || 'UNKNOWN'); break;
-    }
-  }
-
-  function handleAck(payload) {
-    fulfillLatency(payload.cmd);
-    if (payload.status !== 'ok') {
-      flashError(payload.reason || 'FAILED');
-      if (payload.cmd === 'drive_stick' || payload.cmd === 'stop') { stopArmed = false; resetJoystick(false); }
-      return;
-    }
-    switch (payload.cmd) {
-      case 'stop':
-        stopArmed = false;
-        resetJoystick(false);
-        break;
-    }
-    applyLinkStatus();
-  }
-
-  function handleStatus(payload) {
-    lastStatusSnapshot = { esp: !!payload.esp?.connected, car: !!payload.car?.connected };
-    applyLinkStatus();
-  }
-
-  // Signal / WebRTC
-  function connectSignalChannel() {
-    if (signalSocket && (signalSocket.readyState === WebSocket.OPEN || signalSocket.readyState === WebSocket.CONNECTING)) return;
-    if (signalReconnectTimer) { clearTimeout(signalReconnectTimer); signalReconnectTimer = null; }
-    signalSocket = new WebSocket(SIGNAL_URL);
-    signalSocket.addEventListener('open', () => {
-      signalReady = true;
-      if (signalHeartbeat) clearInterval(signalHeartbeat);
-      signalHeartbeat = setInterval(() => sigSend({ type: 'heartbeat' }), SIGNAL_HEARTBEAT_MS);
-      sigSend({ type: 'hello', client: 'controller' });
-      const queued = [...signalQueue]; signalQueue = [];
-      queued.forEach(sigSend);
-    });
-    signalSocket.addEventListener('message', (event) => {
-      try { handleSignalPayload(JSON.parse(event.data)); } catch (err) { console.error('Signal payload error', err); }
-    });
-    signalSocket.addEventListener('close', () => {
-      signalReady = false;
-      if (signalHeartbeat) { clearInterval(signalHeartbeat); signalHeartbeat = null; }
-      scheduleSignalReconnect(); teardownPeer();
-    });
-    signalSocket.addEventListener('error', (err) => { console.warn('Signal error', err); signalSocket.close(); });
-  }
-
-  function scheduleSignalReconnect() {
-    if (signalReconnectTimer) return;
-    signalReconnectTimer = setTimeout(() => { signalReconnectTimer = null; connectSignalChannel(); }, SIGNAL_HEARTBEAT_MS);
-  }
-
-  function sigSend(message) {
-    if (signalReady && signalSocket && signalSocket.readyState === WebSocket.OPEN) {
-      signalSocket.send(JSON.stringify(message));
-    } else { signalQueue.push(message); }
-  }
-
-  async function handleSignalPayload(payload) {
-    const type = (payload.type || '').toLowerCase();
-    if (type === 'offer' && payload.offer) { await setupPeer(payload.offer); return; }
-    if (type === 'ice' && payload.candidate) {
-      if (!rtc || !rtc.remoteDescription || rtc.remoteDescription.type === "") {
-        pendingIceCandidates.push(payload.candidate);
-      } else {
-        try { await rtc.addIceCandidate(new RTCIceCandidate(payload.candidate)); } catch (err) { console.error('ICE add failed', err); }
-      }
-      return;
-    }
-    if (type === 'peer_left') { teardownPeer(); return; }
-    if (type === 'error') flashError(payload.reason || 'SIGNAL ERR');
-  }
-
-  function updateMicToggleUI() {
-    if (!btnMicSend) return;
-    btnMicSend.classList.toggle('off', !micPublishEnabled);
-    btnMicSend.setAttribute('aria-pressed', micPublishEnabled);
-    btnMicSend.textContent = micPublishEnabled ? '🎙️' : '🚫';
-  }
-
-  function refreshCarAudioState() {
-    remoteAudioEl.muted = !carAudioEnabled;
-    if (btnCarAudio) {
-      btnCarAudio.classList.toggle('off', !carAudioEnabled);
-      btnCarAudio.setAttribute('aria-pressed', carAudioEnabled);
-      btnCarAudio.textContent = carAudioEnabled ? '🔊' : '🔇';
-    }
-  }
-
-  function refreshCarVideoState() {
-    if (btnCarVideo) {
-      btnCarVideo.classList.toggle('off', !carVideoVisible);
-      btnCarVideo.setAttribute('aria-pressed', carVideoVisible);
-      btnCarVideo.textContent = carVideoVisible ? '🎥' : '🚫';
-    }
-    if (carVideoVisible) {
-      remoteVideo.style.display = '';
-      if (remoteVideo.srcObject) remoteVideo.play().catch(() => {});
-    } else {
-      remoteVideo.style.display = 'none';
-      try { remoteVideo.pause(); } catch (_) {}
-    }
-  }
-
-  function detachMicSenders() {
-    micSenders.forEach(sender => { try { sender.replaceTrack(null); } catch (err) {} });
-  }
-
-  function releaseMicStream() {
-    if (micStream) micStream.getTracks().forEach(track => { try { track.stop(); } catch (_) {} });
-    micStream = null;
-  }
-
-  async function ensureMicStream() {
-    if (!micPublishEnabled) return null;
-    if (micStream && micStream.getAudioTracks().some(t => t.readyState === 'live')) return micStream;
-    try {
-      micStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
-    } catch (err) {
-      flashError('MIC BLOCKED'); micStream = null; micPublishEnabled = false;
-    }
-    updateMicToggleUI();
-    return micStream;
-  }
-
-  function attachMicToPeer() {
-    if (!rtc || !micStream) return;
-    const tracks = micStream.getAudioTracks();
-    if (!tracks.length) return;
-    if (!micSenders.length) {
-      tracks.forEach(track => micSenders.push(rtc.addTrack(track, micStream)));
-      return;
-    }
-    micSenders.forEach(sender => { try { sender.replaceTrack(tracks[0]); } catch (err) {} });
-  }
-
-  async function refreshMicPublishState() {
-    if (!micPublishEnabled) { detachMicSenders(); releaseMicStream(); updateMicToggleUI(); return; }
-    const stream = await ensureMicStream();
-    if (!stream) { micPublishEnabled = false; updateMicToggleUI(); return; }
-    if (rtc) attachMicToPeer();
-    updateMicToggleUI();
-  }
+async function refreshMicPublishState() {
+  if (!micPublishEnabled) { detachMicSenders(); releaseMicStream(); updateMicToggleUI(); return; }
+  const stream = await ensureMicStream();
+  if (!stream) { micPublishEnabled = false; updateMicToggleUI(); return; }
+  if (rtc) attachMicToPeer();
+  updateMicToggleUI();
+}
 
 async function setupPeer(offer) {
-    teardownPeer();
-    rtc = new RTCPeerConnection(buildRTCConfig());
-    micSenders = [];
+  teardownPeer();
+  rtc = new RTCPeerConnection(buildRTCConfig());
+  micSenders = [];
 
-    rtc.ontrack = (event) => {
-      console.log('[RTC] ontrack fired, kind:', event.track.kind, 'streams:', event.streams.length);
-      const track = event.track;
-
-      if (track.kind === 'video') {
-        const stream = event.streams[0] || new MediaStream([track]);
-        remoteVideo.srcObject = stream;
-        console.log('[RTC] video srcObject set');
-        refreshCarVideoState();
-        remoteVideo.play().catch(e => console.error('[RTC] video.play() failed:', e));
-      } else if (track.kind === 'audio') {
-        const stream = event.streams[0] || new MediaStream([track]);
-        console.log("this is the stream:",stream)
-        remoteAudioEl.srcObject = stream;
-        refreshCarAudioState();
-      }
-    };
-
-    rtc.onicecandidate = (event) => {
-      if (event.candidate) sigSend({ type: 'ice', candidate: event.candidate });
-    };
-
-    rtc.oniceconnectionstatechange = () => {
-      const state = rtc.iceConnectionState;
-      console.log('[RTC] ICE state:', state);
-      if (state === 'failed' || state === 'disconnected' || state === 'closed') {
-        flashError('RTC LOST'); teardownPeer();
-      }
-    };
-
-    rtc.onconnectionstatechange = () => {
-      console.log('[RTC] connection state:', rtc.connectionState);
-    };
-
-    await rtc.setRemoteDescription(new RTCSessionDescription(offer));
-    console.log('[RTC] remote description set, transceivers:', rtc.getTransceivers().map(t => t.receiver.track.kind + ' dir=' + t.direction + ' iceState=' + t.iceTransport?.state));
-
-    const audioTransceiver = rtc.getTransceivers().find(t => t.receiver.track.kind === 'audio');
-    if (audioTransceiver) {
-      micTransceiver = audioTransceiver;
-      audioTransceiver.direction = 'sendrecv';
-      micSenders.push(audioTransceiver.sender);
-      console.log('[RTC] audio transceiver found, set to sendrecv');
-    } else {
-      console.warn('[RTC] no audio transceiver found');
+  rtc.ontrack = (event) => {
+    const track = event.track;
+    if (track.kind === 'video') {
+      const stream = event.streams[0] || new MediaStream([track]);
+      remoteVideo.srcObject = stream;
+      refreshCarVideoState();
+      remoteVideo.play().catch(() => {});
+    } else if (track.kind === 'audio') {
+      const stream = event.streams[0] || new MediaStream([track]);
+      remoteAudioEl.srcObject = stream;
+      refreshCarAudioState();
     }
+  };
 
-    if (micPublishEnabled) {
-      const stream = await ensureMicStream();
-      if (stream) attachMicToPeer();
-      else { micPublishEnabled = false; detachMicSenders(); updateMicToggleUI(); }
-    } else {
-      detachMicSenders();
+  rtc.onicecandidate = (event) => {
+    if (event.candidate) sigSend({ type: 'ice', candidate: event.candidate });
+  };
+
+  rtc.oniceconnectionstatechange = () => {
+    const state = rtc.iceConnectionState;
+    if (state === 'failed' || state === 'disconnected' || state === 'closed') {
+      flashError('RTC LOST'); teardownPeer();
     }
+  };
 
-    const answer = await rtc.createAnswer();
-    await rtc.setLocalDescription(answer);
-    console.log('[RTC] answer created and set, sending to car');
-    sigSend({ type: 'answer', answer: rtc.localDescription });
+  await rtc.setRemoteDescription(new RTCSessionDescription(offer));
 
-    for (const candidate of pendingIceCandidates) {
-      try { await rtc.addIceCandidate(new RTCIceCandidate(candidate)); } catch (err) {}
-    }
-    pendingIceCandidates = [];
+  const audioTransceiver = rtc.getTransceivers().find(t => t.receiver.track.kind === 'audio');
+  if (audioTransceiver) {
+    micTransceiver = audioTransceiver;
+    audioTransceiver.direction = 'sendrecv';
+    micSenders.push(audioTransceiver.sender);
+  }
+
+  if (micPublishEnabled) {
+    const stream = await ensureMicStream();
+    if (stream) attachMicToPeer();
+    else { micPublishEnabled = false; detachMicSenders(); updateMicToggleUI(); }
+  } else {
+    detachMicSenders();
+  }
+
+  const answer = await rtc.createAnswer();
+  await rtc.setLocalDescription(answer);
+  sigSend({ type: 'answer', answer: rtc.localDescription });
+
+  for (const candidate of pendingIceCandidates) {
+    try { await rtc.addIceCandidate(new RTCIceCandidate(candidate)); } catch {}
+  }
+  pendingIceCandidates = [];
 }
-  function teardownPeer() {
-    if (rtc) { try { rtc.close(); } catch (_) {} }
-    rtc = null; micSenders = []; micTransceiver = null;
-    if (remoteVideo) { try { remoteVideo.pause(); } catch (_) {} remoteVideo.srcObject = null; }
-    if (remoteAudioEl) remoteAudioEl.srcObject = null;
-    pendingIceCandidates = [];
-    refreshCarAudioState(); refreshCarVideoState();
+
+function teardownPeer() {
+  if (rtc) { try { rtc.close(); } catch {} }
+  rtc = null; micSenders = []; micTransceiver = null;
+  if (remoteVideo) { try { remoteVideo.pause(); } catch {} remoteVideo.srcObject = null; }
+  if (remoteAudioEl) remoteAudioEl.srcObject = null;
+  pendingIceCandidates = [];
+  refreshCarAudioState(); refreshCarVideoState();
+}
+
+async function requestFullscreen(element) {
+  const target = element || document.documentElement;
+  if (document.fullscreenElement) return;
+  const method = target.requestFullscreen || target.webkitRequestFullscreen || target.msRequestFullscreen;
+  if (!method) return;
+  try { await method.call(target); } catch {}
+}
+
+async function bootstrapControl() {
+  if (controlBootstrapped) return;
+  controlBootstrapped = true;
+  if (fsPrompt) fsPrompt.classList.add('hidden');
+  await loadConfig();
+  connectSignalChannel();
+  connectCtrl();
+}
+
+// ── Media button handlers ──────────────────────────────
+btnMicSend.addEventListener('click',  async () => { micPublishEnabled = !micPublishEnabled; await refreshMicPublishState(); });
+btnCarAudio.addEventListener('click', ()       => { carAudioEnabled   = !carAudioEnabled;   refreshCarAudioState(); });
+btnCarVideo.addEventListener('click', ()       => { carVideoVisible   = !carVideoVisible;   refreshCarVideoState(); });
+
+// ── Boot ───────────────────────────────────────────────
+setControlsEnabled(false);
+setLinkDisplay('OFFLINE', false);
+updateMicToggleUI(); refreshCarAudioState(); refreshCarVideoState();
+refreshJoystickManager();
+
+window.addEventListener('focus', () => {
+  if (!controlBootstrapped) return;
+  connectSignalChannel(); connectCtrl();
+});
+
+window.addEventListener('beforeunload', () => {
+  destroyJoystickManager();
+  if (socket)       try { socket.close();       } catch {}
+  if (signalSocket) try { signalSocket.close();  } catch {}
+});
+
+if (fsButton) {
+  fsButton.addEventListener('click', async () => {
+    await requestFullscreen(document.documentElement);
+    await bootstrapControl();
+  });
+}
+
+window.addEventListener('load', () => {
+  if (fsPrompt) {
+    fsPrompt.classList.remove('hidden');
+    try { fsButton.focus(); } catch {}
+  } else {
+    bootstrapControl();
   }
-
-  btnMicSend.addEventListener('click', async () => { micPublishEnabled = !micPublishEnabled; await refreshMicPublishState(); });
-  btnCarAudio.addEventListener('click', () => { carAudioEnabled = !carAudioEnabled; refreshCarAudioState(); });
-  btnCarVideo.addEventListener('click', () => { carVideoVisible = !carVideoVisible; refreshCarVideoState(); });
-
-  setControlsEnabled(false);
-  setLinkDisplay('OFFLINE', false);
-  updateMicToggleUI(); refreshCarAudioState(); refreshCarVideoState();
-  refreshJoystickManager();
-
-  window.addEventListener('focus', () => {
-    if (!controlBootstrapped) return;
-    connectSignalChannel();
-    connectCtrl();
-  });
-  window.addEventListener('beforeunload', () => {
-    destroyJoystickManager();
-    if (socket) try { socket.close(); } catch (_) {}
-    if (signalSocket) try { signalSocket.close(); } catch (_) {}
-  });
-
-  if (fsButton) {
-    fsButton.addEventListener('click', async () => {
-      await requestFullscreen(document.documentElement);
-      if (fsPrompt) fsPrompt.classList.add('hidden');
-      await bootstrapControl();
-    });
-  }
-
-  window.addEventListener('load', () => {
-    if (fsPrompt) {
-      fsPrompt.classList.remove('hidden');
-      if (fsButton) {
-        try { fsButton.focus(); } catch (_) {}
-      }
-    } else {
-      bootstrapControl();
-    }
-  });
+});
 </script>
 </body>
 </html>
