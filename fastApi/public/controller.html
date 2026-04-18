@@ -474,6 +474,7 @@
 <script>
   const HEARTBEAT_INTERVAL_MS = 2000;
   const MAX_RECONNECT_DELAY_MS = 5000;
+  const FB_DRIVE_DEBOUNCE_MS = 300;
   const WS_URL = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ctrl`;
   const SIGNAL_URL = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws?role=ctrl`;
   const SIGNAL_HEARTBEAT_MS = 5000;
@@ -504,6 +505,7 @@
   let reconnectTimer = null;
   let heartbeatTimer = null;
   let pendingTimes = new Map();
+  let lastFbDriveSentAt = 0;
   let activeDir = null;
   let stopArmed = false;
   let lastStatusSnapshot = { esp: false, car: false };
@@ -655,6 +657,10 @@ function buildRTCConfig() {
 
   function sendDrive(dir) {
     if (!wsReady()) return;
+    if ((dir === 'F' || dir === 'B') && performance.now() - lastFbDriveSentAt < FB_DRIVE_DEBOUNCE_MS) {
+      return;
+    }
+    if (dir === 'F' || dir === 'B') lastFbDriveSentAt = performance.now();
     stopArmed = true;
     recordLatency(`drive:${dir}`);
     if (!sendWs({ type: 'drive', dir })) flashError('NO LINK');
